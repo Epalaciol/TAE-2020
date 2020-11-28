@@ -1,0 +1,760 @@
+
+```{r warning=FALSE, error=FALSE}
+library(ISLR) # Cargar librería con los datos
+library(ggplot2)
+library(MLmetrics)
+library(MASS)
+library(class)
+```
+# Apartado 4.7
+# Punto 10
+## Introducción
+
+En el siguiente estudio, se presentan resultados analíticos del set de datos Weekly del paquete ISLR, este set de datos contiene
+los datos del porcentaje de retorno del índice S&P 500 a lo largo de las semanas en 20 años, desde 1990 hasta 2010. 
+
+El set de datos contiene las variables año, el retorno porcentual de la semana, 5 variables del retorno porcentual de cada una de las semanas anteriores,
+una variable volumen (número promedio de acciones comerciadas diariamente, en billones), y finalmente la dirección, que indica si el retorno fue positivo o negativo dicha semana.
+```{r}
+head(Weekly)
+```
+## Literal a), Resumen de los datos 
+El resumen de los datos muestra un promedio de crecimiento porcentual positivo del día de 0.14%, lo que indica que a lo largo del tiempo el porcentaje de retorno del S&P es bastante variable y tiende a mantener un equilibrio entre incremento y disminución del mismo.
+
+La variable 'Direction' muestra $605$ subidas contra $484$ caídas, lo que indica que a la larga el S&P incrementa su valor en el tiempo.
+
+```{r}
+summary(Weekly)
+```
+
+En el siguiente Diagrama de Caja se pueden identificar la varianza de los datos en cada año
+
+Los años con una varianza menor se podrían relacionar con años con poca incertidumbre económica, mientras que los años con una varianza mayor podrían relacionarse con años en los que el S&P se comportó de una manera más volátil, un ejemplo de esto es el año 2008, donde ocurrió una crisis financiera y una [crisis bursátil mundial](https://es.wikipedia.org/wiki/Crisis_bursátil_mundial_de_octubre_de_2008)
+
+```{r}
+Weekly$YFactor <- as.factor(Weekly$Year) # Año como factor para producir un Box Plot
+ggplot(data= Weekly, mapping = aes(x = YFactor, y= Today)) + geom_boxplot() + xlab("Año") + ylab("Porcentaje de Retorno")
+```
+
+### Gráfica histórica de los puntos
+
+La gráfica histórica de los puntos muestra el constante incremento y disminución del porcentaje de retorno, sobresalen los puntos alrededor del año 2008 debido a la crisis financiera ya mencionada.
+
+```{r}
+ggplot(data= Weekly, mapping = aes(x = c(1:length(Year)), y= Today)) + geom_line() + geom_point() + xlab("Registro") + ylab("Porcentaje de Retorno") + labs(title="Serie histórica de Porcentaje de Retorno")
+```
+
+Se realiza una gráfica con menos puntos para poder visualizar de una mejor manera.
+```{r}
+ggplot(data= Weekly[1:300,], mapping = aes(x = c(1:length(Year)), y= Today)) + geom_line() + geom_point() + xlab("Registro") + ylab("Porcentaje de Retorno") + labs(title="Serie histórica de Porcentaje de Retorno")
+```
+
+## Literal b), Regresión logística
+
+Se realiza una regresión logística con todos los datos, tienendo como variable respuesta la dirección, las 5 variables de delay (Lag) más el volumen (Volume) como predictores.
+```{r}
+weekly_glm <- glm(Direction ~ Lag1+Lag2+Lag3+Lag4+Lag5+Volume, data= Weekly, family="binomial")
+summary(weekly_glm)
+```
+
+
+El único predictor que parece ser un estadísticamente significante es la variable Lag2, pero no demuestra mayor significancia.
+
+## Literal c), Matriz de confusión
+
+```{r}
+contrasts(as.factor(Weekly$Direction)) # Nos indica que Down es un 0 y Up es un 1, para interpretar los resultados de la predicción
+```
+
+La matriz de confusión demuestra que el error más grande son los falsos positivos, en este caso el positivo se da cuando se predice un incremento en el porcentaje de retorno, y el falso es que realmente era un decrecimiento, la matriz de confusión también demuestra que el modelo en la mayor parte de los datos predice un incremento, y tan solo alrededor de 100 veces predice una disminución.
+
+```{r}
+predicted <- round(predict(weekly_glm, newdata=Weekly, type="response")) # Predicción
+real <- weekly_glm$y # Reales
+
+c_matrix <- ConfusionMatrix(predicted, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted,real)*100, "%"))
+
+c_matrix
+```
+
+
+## Literal d), Regresión logística #2
+
+Se realiza otra regresión logística, teniendo en cuenta esta vez solamente la variable Lag2, y usando los datos de entrenamiento desde el 1990 hasta el 2008.
+```{r}
+weekly_tr <- subset(Weekly, Year <= 2008) # Datos de entrenamiento
+weekly_vl <- subset(Weekly, Year > 2008) # Datos de validación
+```
+
+```{r}
+weekly_glm2 <- glm(Direction ~ Lag2, data= weekly_tr, family="binomial")
+summary(weekly_glm2)
+```
+
+La matriz de confusión muestra unos resultados similares a los anteriores, en los que el mayor error se presenta en los falsos positivos.
+```{r}
+predicted <- round(predict(weekly_glm2, newdata=weekly_vl,  type="response")) # Predicción
+real <- ifelse(weekly_vl$Direction=="Up",1,0) # Reales
+
+c_matrix2 <- ConfusionMatrix(predicted, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted,real)*100, "%"))
+c_matrix2
+```
+
+## Literal e), LDA
+```{r}
+weekly_lda <- lda(Direction ~ Lag2, data = weekly_tr)
+weekly_lda
+```
+
+Las predicciones realizadas por el LDA son identicas a las realizadas por el GLM.
+```{r}
+predicted <- predict(weekly_lda, newdata=weekly_vl) # Predicción
+real <- weekly_vl$Direction # Reales
+
+c_matrix_lda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_lda
+```
+
+
+## Literal f), QDA
+```{r}
+weekly_qda <- qda(Direction ~ Lag2, data = weekly_tr)
+weekly_qda
+```
+
+El QDA muestra los peores resultados en terminos de generalidad ya que no marca ninguna disminución.
+```{r}
+predicted <- predict(weekly_qda, newdata=weekly_vl) # Predicción
+real <- weekly_vl$Direction # Reales
+
+c_matrix_lda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_lda
+```
+
+## Literal g), KNN con k=1
+```{r}
+# Preparación de los datos
+x_tr <- cbind(weekly_tr$Lag2)
+x_vl <- cbind(weekly_vl$Lag2)
+
+y_tr <- weekly_tr$Direction
+y_vl <- weekly_vl$Direction
+```
+
+
+La aproximación por KNN muestra unos resultados más alejados a los otros modelos, y predice correctamente el 50% de los datos, con más variabilidad entre respuestas de incremento y disminución.
+```{r}
+set.seed(2020)
+predicted = knn(train = x_tr, test = x_vl, cl = y_tr, k = 1)
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted,y_vl)*100, "%"))
+table(predicted, y_vl)
+```
+
+## Literal h), Resultados
+
+Los modelos lineales (GLM y LDA) son los que demuestran el mejor porcentaje de aciertos, ambos con $65$ aciertos, aunque con un claro desbalance a predecir incrementos en el porcentaje de retorno. El QDA es el modelo más desbalanceados ya que no predice ni una sola disminución. Por último el modelo de agrupación con KNN muestra los resultados con mejor generalidad ya que tiene una buena cantidad de aciertos $52$ y estos se reparten en predicciones de incremento y disminución.
+
+## Literal i), Experimentación
+
+### Agregando la variable volumen como predictor
+
+Agregar la variable volumen, aunque no aumente el porcentaje de aciertos, si le agrega cierto nivel de variación a las predicciones, ya que se predicen más disminuciones que en las aproximaciones anteriores. Se obtiene el mejor resultado al realizar KNN con $k=1$ con un $55\%$ de aciertos, aún así siendo un resultado bastante bajo para un problema de clasificación binaria.
+
+#### GLM
+```{r}
+weekly_glm <- glm(Direction ~ Lag2 + Volume, data = weekly_tr, family = "binomial")
+
+predicted <- round(predict(weekly_glm, newdata = weekly_vl, type="response"))
+real <- ifelse(weekly_vl$Direction=="Up",1,0)
+
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted,real)*100, "%"))
+ConfusionMatrix(predicted, real)
+```
+#### LDA
+```{r}
+weekly_lda <- lda(Direction ~ Lag2 + Volume, data= weekly_tr)
+predicted <- predict(weekly_lda, newdata=weekly_vl) # Predicción
+real <- weekly_vl$Direction # Reales
+
+c_matrix_lda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_lda
+```
+#### QDA
+```{r}
+weekly_qda <- qda(Direction ~ Lag2 + Volume, data= weekly_tr)
+predicted <- predict(weekly_qda, newdata=weekly_vl) # Predicción
+real <- weekly_vl$Direction # Reales
+
+c_matrix_lda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_lda
+```
+#### KNN
+```{r}
+# Preparación de los datos
+x_tr <- cbind(weekly_tr$Lag2,weekly_tr$Volume)
+x_vl <- cbind(weekly_vl$Lag2,weekly_vl$Volume)
+
+y_tr <- weekly_tr$Direction
+y_vl <- weekly_vl$Direction
+for (k in c(1:10)){
+  set.seed(2020)
+  predicted = knn(train = x_tr, test = x_vl, cl = y_tr, k = k)
+  print(sprintf("El porcentaje de aciertos para k=%i es de %f%s",k,Accuracy(predicted,y_vl)*100, "%"))
+}
+```
+
+KNN con $k=1$ ha sido el método que ha demostrado el mejor comportamiento, y por ende se seguirá experimentando con el mismo.
+
+#### KNN con k=1, usando todas las variables
+
+El porcentaje de aciertos disminuye al usar todas las variables con KNN $k=1$.
+```{r}
+x_tr <- cbind(weekly_tr$Lag1,weekly_tr$Lag2, weekly_tr$Lag3, weekly_tr$Lag4,weekly_tr$Lag5,weekly_tr$Volume)
+x_vl <- cbind(weekly_vl$Lag1,weekly_vl$Lag2, weekly_vl$Lag3, weekly_vl$Lag4,weekly_vl$Lag5,weekly_vl$Volume)
+
+y_tr <- weekly_tr$Direction
+y_vl <- weekly_vl$Direction
+
+set.seed(2020)
+predicted = knn(train = x_tr, test = x_vl, cl = y_tr, k = 1)
+print(sprintf("El porcentaje de aciertos es de %f%s",Accuracy(predicted,y_vl)*100, "%"))
+ConfusionMatrix(predicted, y_vl)
+```
+#### KNN con k=1, variando los predictores de delay
+
+Se realiza una comparación del comportamiento del modelo variando los predictores.
+
+```{r}
+y_tr <- weekly_tr$Direction
+y_vl <- weekly_vl$Direction
+predictors <- c("Lag1", "Lag2", "Lag3", "Lag4", "Lag5")
+for (i in predictors){
+  x_tr <- cbind(weekly_tr[[as.name(i)]], weekly_tr$Volume)
+  x_vl <- cbind(weekly_vl[[as.name(i)]], weekly_vl$Volume)
+  set.seed(2020)
+  predicted = knn(train = x_tr, test = x_vl, cl = y_tr, k = 1)
+  print(sprintf("El porcentaje de aciertos con el predictor %s es de %f%s",i,Accuracy(predicted,y_vl)*100, "%"))
+}
+
+```
+
+#### Conclusión
+
+Realizando diversos modelos variando los predictores de delay, se ha encontrado que el modelo más efectivo es el KNN con $k=1$, utilizando Lag2 y Volume como predictores. Aún así ninguno de los modelos refleja buenos resultados, como máximo se alcanza un $55\%$, porcentaje bastante bajo para un problema de clasificación binario. Es posible que se necesiten más datos, o sea necesario realizar limpieza en los datos para expulsar los datos anomalos.
+
+
+# Punto 11
+
+## Introducción
+
+En este problema el objetivo es obtener un modelo para predecir si un automóvil obtiene un buen
+rendimiento de gasolina, basándose en el set de datos Auto.
+
+El dataset cuenta con varios datos acerca de las especificaciones del automóvil, y las millas por
+galón como el dato que da a entender el rendimiento del carro.
+```{r}
+summary(Auto)
+```
+
+## Literal a), Creación de la variable binaria mpg01
+
+Se procede a crear una variable binaria mpg01 la cuál es verdadera si el mpg es superior a la mediana del mpg a lo largo del dataset, la mediana en este caso es de $22.75$.
+```{r}
+Auto$mpg01 <- (Auto$mpg >= median(Auto$mpg))
+median(Auto$mpg)
+```
+Efectivamente el ejercicio anterior resulta en una división igualitaria de los autos.
+```{r}
+summary(Auto$mpg01)
+```
+FALSE indica un $0$ y TRUE indica un $1$.
+```{r}
+contrasts(as.factor(Auto$mpg01))
+```
+
+## Literal b), Análisis exploratorio
+
+Se realizará un análisis de cada variable contra la variable mpg para decidir cuáles serán los predictores usados en los modelos.
+
+### Número de Cilindros
+
+Se realiza una gráfica de puntos agregando la línea roja de la mediana, donde los valores encima o sobre esta tienen un valor de $mpg01 = 1$ y las que estén por debajo un valor de $mpg01 = 0$.
+
+La gráfica muestra que para cada número de cilindros es posible tener un buen rendimiento de mpg, destaca que los autos con 4 cilindros tienen más ocurrencias en valores altos de mpg, y los de 8 cilindros en valores bajos, se alcanza a notar una pequeña tendencia a entre más cilindros, peor rendimiento de mpg, pero no es del todo clara.
+
+
+```{r}
+
+# Cilindros
+ggplot(data = Auto, mapping=aes(x = cylinders, y=mpg)) + geom_point() + geom_line(mapping= aes(x = cylinders,y = median(mpg), col="Mediana")) + labs(title="Comportamiento del No. de Cilindros",x = "Número de Cilindros", y = "Millas por galón", color="Leyenda") + scale_color_manual(values = c("Mediana" = "red")) 
+```
+
+
+### Desplazamiento
+
+En esta gráfica se nota una clara tendencia en la que los vehículos con un desplazamiento más bajo muestran el mejor rendimiento de mpg.
+```{r}
+# Displacement
+displacement_g <- ggplot(data = Auto, mapping=aes(x = displacement, y=mpg))
+displacement_g + geom_point() + geom_line(mapping= aes(x = displacement,y = median(mpg), col="Mediana")) + labs(title="Comportamiento del Desplazamiento" ,x = "Desplazamiento en Pulgadas Cúbicas", y = "Millas por galón", color="Leyenda") + scale_color_manual(values = c("Mediana" = "red")) 
+```
+
+### Caballos de fuerza
+
+Al igual que con el desplazamiento, al tener menos caballos de fuerza mejor es el rendimiento en mpg.
+
+```{r}
+horsepower_g <- ggplot(data = Auto, mapping=aes(x = horsepower, y=mpg))
+horsepower_g + geom_point() + geom_line(mapping= aes(x = horsepower,y = median(mpg), col="Mediana")) + labs(title="Comportamiento de los Caballos de Fuerza",x = "Caballos de fuerza", y = "Millas por galón", color="Leyenda") + scale_color_manual(values = c("Mediana" = "red"))
+```
+
+
+### Masa
+
+Al igual que el desplazamiento y los caballos de fuerza, los carros más livianos presentan un mejor rendimiento en mpg. Este comportamiento de las 3 variables podría sugerir una correlación de las mismas.
+```{r}
+weight_g <- ggplot(data = Auto, mapping=aes(x = weight, y=mpg))
+weight_g + geom_point() + geom_line(mapping= aes(x = weight,y = median(mpg), col="Mediana")) + labs(title="Comportamiento de la Masa",x = "Masa del carro en libras", y = "Millas por galón", color="Leyenda") + scale_color_manual(values = c("Mediana" = "red"))
+```
+
+### Tiempo de aceleración de 0 a 60 mph
+
+La gráfica no sugiere una relación directa entre el tiempo de aceleración, al menos para los valores
+entre 11 y 23 segundos, aproximadamente, sin embargo se identifica que los autos que presentan una aceleración de 10 o menos segundos generalmente presentan un mal rendimiento en mpg.
+
+```{r}
+accel_g <- ggplot(data = Auto, mapping=aes(x = acceleration, y=mpg))
+accel_g + geom_point() + geom_line(mapping= aes(x = acceleration,y = median(mpg), col="Mediana")) + labs(titile="Comportamiento de la aceleración",x = "Tiempo en segundos para acelerar a 60 mph", y = "Millas por galón", color="Leyenda") + scale_color_manual(values = c("Mediana" = "red"))
+```
+
+### País de origen
+
+La diferenciación por país de origen demuestra una clara diferencia en el rendimiento en mpg, donde los autos americanos presentan el peor, y los europeos y japoneses el mejor.
+
+```{r}
+# Factor de origen
+Auto$forigin <- as.factor(Auto$origin)
+
+origin_g <- ggplot(data = Auto, mapping=aes(x = forigin, y=mpg))
+origin_g + geom_boxplot() + geom_line(mapping= aes(x = forigin,y = median(mpg), col="Mediana")) + labs(title="Comportamiento del Origen del Automóvil",x = "Origen del Automóvil", y = "Millas por galón", color="Leyenda") + scale_x_discrete(labels = c("1" = "Americano", "2" = "Europeo", "3" = "Japonés"))
+```
+
+### Año del modelo
+
+Se muestra que a medida que aumenta el año se reduce el mpg, sin embargo no hay una diferenciación absoluta, todos los años tienen al menos un carro con buen rendimiento en mpg y con mal rendimiento en mpg.
+
+
+```{r}
+year_g <- ggplot(data = Auto, mapping=aes(x = year, y=mpg))
+year_g + geom_point() + geom_line(mapping= aes(x = year,y = median(mpg), col="Mediana")) + labs(title="Comportamiento por Año" ,x = "Año", y = "Millas por galón", color="Leyenda") + scale_color_manual(values = c("Mediana" = "red")) + scale_x_continuous(breaks = c(70:82))
+```
+
+### Nombre del carro
+
+La variable de nombre del carro posee muchos niveles y una diferenciación por el mismo no sería del todo buena, ya que no se cuentan con muchos datos.
+
+```{r}
+length(levels(Auto$name))
+```
+
+### Elección de predictores
+
+Los predictores elegidos según el análisis serán:
+- Desplazamiento (displacement)
+- Caballos de fuerza (horsepower)
+- Masa del vehículo (weight)
+- Origen del auto (forigin)
+
+```{r}
+formula <- mpg01 ~ displacement + horsepower + weight + forigin
+```
+
+
+## Literal c), División del set de datos
+
+Para la división del set de datos se toma una muestra aleatoria del 80% para entrenamiento y el 20% restante para validación
+```{r}
+# Se encuentra el tamaño del set de datos (tomando el 80% para entrenamiento)
+sample_size = floor(0.8*nrow(Auto))
+set.seed(2020)
+
+# Dividir el set de datos aleatoriamente
+picked = sample(seq_len(nrow(Auto)),size = sample_size)
+auto_tr =Auto[picked,]
+auto_vl =Auto[-picked,]
+```
+
+
+## Literal d), LDA
+
+```{r}
+auto_lda <- lda(formula, data = auto_tr)
+auto_lda
+```
+
+```{r}
+predicted <- predict(auto_lda, newdata=auto_vl) # Predicción
+real <- auto_vl$mpg01 # Reales
+
+c_matrix_lda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos para es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_lda
+
+
+```
+
+## Literal e), QDA
+```{r}
+auto_qda <- qda(formula, data = auto_tr)
+auto_qda
+```
+
+```{r}
+predicted <- predict(auto_qda, newdata=auto_vl) # Predicción
+real <- auto_vl$mpg01 # Reales
+
+c_matrix_qda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos para es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_qda
+```
+
+## Literal f), Regresión logística
+```{r}
+auto_glm <- glm(formula, data= auto_tr, family="binomial")
+summary(auto_glm)
+```
+```{r}
+predicted <- round(predict(auto_glm, newdata=auto_vl,  type="response")) # Predicción
+real <- auto_vl$mpg01 # Reales
+
+c_matrix_glm <- ConfusionMatrix(predicted, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos para es de %f%s", Accuracy(predicted,real)*100, "%"))
+c_matrix_glm
+```
+```{r}
+# Preparación de los datos
+x_tr <- cbind(auto_tr$displacement,auto_tr$horsepower, auto_tr$weight, auto_tr$forigin)
+x_vl <- cbind(auto_vl$displacement,auto_vl$horsepower, auto_vl$weight, auto_vl$forigin)
+
+y_tr <- auto_tr$mpg01
+y_vl <- auto_vl$mpg01
+```
+
+La aproximación por KNN muestra unos resultados más alejados al resto en términos de efectividad, los $k$ que presentaron el mejor desempeño fueron los $k = 4$ y $k = 7$
+```{r}
+set.seed(2020)
+
+for (k in c(1:10)) {
+  predict = knn(train = x_tr, test = x_vl, cl = y_tr, k = k)
+  print(sprintf("El porcentaje de aciertos para el k=%i es de %f%s", k, Accuracy(predict,y_vl)*100, "%"))
+}
+
+```
+
+## Conclusión
+
+El modelo que obtuvo un mejor porcentaje de aciertos fue el del QDA, seguido del LDA, por último la regresión logística y el mejor modelo de KNN obtuvieron el mismo porcentaje de aciertos.
+
+# Punto 12
+
+## Literal a), Funcion Power()
+
+```{r}
+Power <- function(){
+  print(2^3)
+}
+Power()
+```
+
+## Literal b), Funcion Power2()
+```{r}
+Power2 <- function(x,a){
+  print(x^a)
+}
+
+Power2(3,8)
+```
+
+## Literal c), Uso de Power2()
+```{r}
+Power2(10,3)
+Power2(8,17)
+Power2(131,3)
+
+```
+
+## Literal d), Función Power3()
+```{r}
+Power3 <- function(x,a){
+  return(x^a)
+}
+```
+
+## Literal e), Gráfica de f(x)
+```{r}
+plot(x = c(1:10), y = Power3(c(1:10), 2), type = "b", main = "f(x) = x^2", xlab = "x", ylab="y", las = 1)
+```
+```{r}
+plot(x = c(1:10), y = Power3(c(1:10), 2), type = "b", main = "f(x) = x^2", xlab = "x", ylab="y", las = 1, log="xy")
+```
+
+## Literal f), Función PlotPower()
+```{r}
+PlotPower <- function(x,a){
+  plot(x = x, y = Power3(x, a), type = "b", main = sprintf("f(x) = x^%i", a), xlab = "x", ylab="y", las = 1)
+}
+
+PlotPower(c(1:15), 3)
+```
+
+# Punto 13
+
+## Introducción
+
+En el siguiente punto el objetivo es predecir a partir de los datos si un suburbio tiene una tasa de criminalidad superior a la mediana. Se usará el set de datos Boston del paquete MASS.
+
+
+
+## Resumen y variables
+
+El dataset cuenta con las siguientes variables:
+
+- crim: Tasa de criminalidad per cápita.
+- zn: Proporción de terreno residencial dividido en lotes, sobre 25000 pies cuadrados.
+- indus: Proporción de areas de negocios no-minoristas por suburbio.
+- chas: Variable dummy donde es 1 si el suburbio limita con el río Charles y 0 si no.
+- nox: Concetración de óxido de nitrógeno en partes por 10 millones.
+- rm: Número promedio de habitaciones por vivienda.
+- age: Proporción de viviendas ocupadas por sus dueños, construidas antes de 1940.
+- dis: Media ponderada de la distancia a 5 centros de empleo de Boston.
+- rad: Índice de accesibilidad a carreteras radiales.
+- ptratio: Radio de pupílo-maestro por suburbio.
+- black: $1000(Bk - 0.63)^2$ donde $Bk$ es la proporción de negros en el suburbio.
+- lstat: Status bajo de la población (porcentaje).
+- medv: Mediana de viviendas ocupadas por sus dueños en 1000$
+
+```{r}
+summary(Boston)
+```
+
+## Variable crim01
+
+Se procede a crear una variable binaria crim01 la cuál es verdadera si la tasa de criminalidad es superior a la mediana de la tasa a lo largo del dataset, la mediana en este caso es de $0.25651$
+```{r}
+Boston$crim01 <- (Boston$crim >= median(Boston$crim))
+median(Boston$crim)
+```
+
+FALSE indica un $0$ y TRUE indica un $1$
+```{r}
+contrasts(as.factor(Boston$crim01))
+```
+
+## División del set de datos
+
+Para la división del set de datos se toma una muestra aleatoria del 80% para entrenamiento y el 20% restante para validación
+```{r}
+# Se encuentra el tamaño del set de datos (tomando el 80% para entrenamiento)
+sample_size = floor(0.8*nrow(Boston))
+set.seed(2020)
+
+# Dividir el set de datos aleatoriamente
+picked = sample(seq_len(nrow(Boston)),size = sample_size)
+boston_tr =Boston[picked,]
+boston_vl =Boston[-picked,]
+```
+
+
+Se realizarán diversos modelos con regresión logística, utilizando diferentes sets de predictores, los predictores se separarán según su tipo:
+
+- Geográfico: zn, indus, chas, dis, rad
+- Vivienda: rm, age, medv
+- Poblacional: ptratio, black, lstat
+
+Las variables nox y tax, se incluiran en los modelos finales ya que no se encasillan en ninguno de los grupos
+
+De cada modelo luego se tomaran las variables que presentaron la mayor significancia y estas serán las que se usarán para cada uno de los modelos posteriores.
+
+## Regresión logística, predictores geográficos.
+
+Las variables con mayor significancia fueron dis,rad, zn.
+```{r}
+model_glm1 <- glm(crim01 ~ zn + indus + chas + dis + rad, data = boston_tr, family = "binomial")
+summary(model_glm1)
+```
+```{r}
+predicted <- round(predict(model_glm1, newdata = boston_vl, type = "response"))
+real <- boston_vl$crim01
+
+acc <- Accuracy(predicted, real)* 100
+
+print(sprintf("El porcentaje de aciertos fue del %f%s", acc, "%"))
+ConfusionMatrix(predicted, real) # Matriz de confusión
+```
+
+Para las variables de vivienda, la de mayor significancia fue age
+```{r}
+model_glm2 <- glm(crim01 ~ rm + age + medv, data= boston_tr, family = "binomial")
+summary(model_glm2)
+```
+```{r}
+predicted <- round(predict(model_glm2, newdata = boston_vl, type = "response"))
+real <- boston_vl$crim01
+
+acc <- Accuracy(predicted, real)* 100
+
+print(sprintf("El porcentaje de aciertos fue del %f%s", acc, "%"))
+ConfusionMatrix(predicted, real) # Matriz de confusión
+```
+
+Para las variables poblacionales, las de mayor significancia fueron las variables black y lstat.
+```{r}
+model_glm3 <- glm(crim01 ~ ptratio + black + lstat, data = boston_tr, family = "binomial")
+summary(model_glm3)
+```
+```{r}
+predicted <- round(predict(model_glm3, newdata = boston_vl, type = "response"))
+real <- boston_vl$crim01
+
+acc <- Accuracy(predicted, real)* 100
+
+print(sprintf("El porcentaje de aciertos fue del %f%s", acc, "%"))
+ConfusionMatrix(predicted, real) # Matriz de confusión
+```
+
+
+## Predictores elegidos
+
+Los predictores elegidos serán:
+- dis
+- rad
+- age
+- black
+- lstat
+- nox
+- tax
+
+
+## Regresión logística
+
+Se realiza una regresión logística con los predictores escogidos.
+
+```{r}
+
+model_glm <- glm(crim01 ~ dis + rad + age + black + lstat + nox + tax, data = boston_tr, family = "binomial")
+
+summary(model_glm)
+```
+
+El porcentaje de aciertos si aumenta respecto a los modelos anteriores, pero se sospecha que es por la inclusión de las variables nox y tax. Se realizará un modelo con todas las variables para ver el contraste.
+```{r}
+predicted <- round(predict(model_glm, newdata = boston_vl, type = "response"))
+real <- boston_vl$crim01
+
+acc <- Accuracy(predicted, real) * 100
+
+print(sprintf("El porcentaje de aciertos fue del %f%s", acc, "%"))
+ConfusionMatrix(predicted, real) # Matriz de confusión
+```
+
+A continuación se realiza una regresión logística con todas las variables.
+```{r}
+model_glm <- glm(crim01 ~ zn + indus + chas + nox + rm + age + dis + rad + tax + ptratio + black + lstat + medv, data = boston_tr, family = "binomial")
+
+summary(model_glm)
+```
+
+El porcentaje de aciertos hasta ahora es el mejor de todos los modelos, sin embargo se realizará un modelo con las variables que parecen tener significancia del modelo.
+```{r}
+predicted <- round(predict(model_glm, newdata = boston_vl, type = "response"))
+real <- boston_vl$crim01
+
+acc <- Accuracy(predicted, real)* 100
+
+print(sprintf("El porcentaje de aciertos fue del %f%s", acc, "%"))
+ConfusionMatrix(predicted, real) # Matriz de confusión
+```
+
+```{r}
+model_glm <- glm(crim01 ~ zn + nox + dis + rad + tax + ptratio + medv, data = boston_tr, family = "binomial")
+summary(model_glm)
+```
+
+El porcentaje de aciertos no mejora respecto al modelo con todas las variables, entonces se usarán todas las variables como predictores.
+```{r}
+predicted <- round(predict(model_glm, newdata = boston_vl, type = "response"))
+real <- boston_vl$crim01
+
+acc <- Accuracy(predicted, real)* 100
+
+print(sprintf("El porcentaje de aciertos fue del %f%s", acc, "%"))
+```
+```{r}
+boston_fml <- crim01 ~ zn + indus + chas + nox + rm + age + dis + rad + tax + ptratio + black + lstat + medv
+```
+
+```{r}
+boston_qda <- qda(boston_fml, data = boston_tr)
+boston_qda
+```
+```{r}
+predicted <- predict(boston_qda, newdata=boston_vl) # Predicción
+real <- boston_vl$crim01 # Reales
+
+c_matrix_qda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos para es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_qda
+```
+```{r}
+boston_lda <- lda(boston_fml, data = boston_tr)
+boston_lda
+```
+```{r}
+predicted <- predict(boston_lda, newdata=boston_vl) # Predicción
+real <- boston_vl$crim01 # Reales
+
+c_matrix_lda <- ConfusionMatrix(predicted$class, real) # Matriz de confusión
+print(sprintf("El porcentaje de aciertos para es de %f%s", Accuracy(predicted$class,real)*100, "%"))
+c_matrix_lda
+```
+```{r}
+# Preparación de los datos
+x_tr <- cbind(boston_tr)
+x_vl <- cbind(boston_vl)
+
+y_tr <- boston_tr$crim01
+y_vl <- boston_vl$crim01
+```
+
+## Aproximación por KNN
+
+El k que genera el mejor porcentaje de aciertos es $k=4$.
+```{r}
+for (k in c(1:10)) {
+  set.seed(2020)
+  predict = knn(train = x_tr, test = x_vl, cl = y_tr, k = k)
+  print(sprintf("El porcentaje de aciertos para el k=%i es de %f%s", k, Accuracy(predict,y_vl)*100, "%"))
+}
+```
+
+Los resultados del KNN con $k=4$
+```{r}
+set.seed(2020)
+predict = knn(train = x_tr, test = x_vl, cl = y_tr, k = 4)
+print(sprintf("El porcentaje de aciertos para el k=%i es de %f%s", 4, Accuracy(predict,y_vl)*100,"%"))
+table(predict, y_vl)
+```
+
+## Conclusión
+
+El modelo que presentó la mejor métrica de porcentaje de aciertos fue KNN con $k=4$, con un $96\%$. Las otras aproximaciones como el LDA, GLM, QDA  presentan un rendimiento más bajo, yendo desde $83\%$ hasta $89\%$. Realizando el análisis de predictores con la regresión logística, se definió que todas las variables aportaban un poco de significancia a la predicción, presentando el mejor rendimiento al usar todas las variables en el modelo.
+
+
+
+
