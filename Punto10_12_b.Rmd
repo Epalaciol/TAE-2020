@@ -1,0 +1,302 @@
+# Overview and solutions | Ensemble trees
+
+Se prentende introducir cada una de las liberías, iniciando con **randomForest**, haciendo uso del set de datos **Boston**
+  
+  ```{r}
+library(randomForest)
+library(MASS)
+library(ISLR)
+library(glmnet)
+
+#Obtención del set de entrenamiento
+set.seed(1)
+train = sample(1: nrow(Boston), nrow(Boston)/2)
+#Obtención del set de prueba
+boston.test = Boston[-train, "medv"]
+## Generación del modelo
+bag.boston = randomForest(medv ~. , data = Boston, subset = train, mtry = 13, importance = TRUE)
+bag.boston
+```
+En este caso, el argumento **mtyr=13**, nos indica que los 13 predictores deberían ser considerados en cada una de las divisiones del arbol, en otras palabras, que deberíamos hacer uso del método **bagging** 
+  
+### ¿Qué tan bien trabaja este modelo en el set de prueba?
+  
+  ```{r echo=FALSE, message=TRUE, warning=FALSE}
+yhat.bag = predict(bag.boston, newdata = Boston[-train, ])
+plot(yhat.bag, boston.test)
+abline(0, 1)
+print(mean((yhat.bag-boston.test)^2))
+```
+El error cuadrático medio (MSE) del set de prueba para el bagged regression tree es de 23.4579, Usaremos la variable *ntree*, con el fin de reducir el crecimiento de arboles.
+
+```{r}
+bag.boston = randomForest(medv~., data = Boston, subset = train, mtry = 13, ntree = 25)
+yhat.bag = predict(bag.boston, newdata = Boston[-train, ])
+mean((yhat.bag - boston.test)^2)
+
+```
+Por defecto, **randomForest()**, usa p/3 variables cuando construye un random forest de arboles de regresión, y $\sqrt[2]{p}$ cuando construye un random forest de arboles de clasificación. En este caso, usaremos un **myrt = 6**
+  
+  ```{r}
+set.seed(1)
+rf.boston = randomForest(medv~., data = Boston, subset = train, mtry = 6, importance = TRUE)
+
+yhat.rf = predict(rf.boston, newdata = Boston[-train,])
+mean((yhat.rf - boston.test)^2)
+```
+Se nota una mejora respecto a los modelos bagging. Construiremos la importancia de cada variable
+
+```{r}
+importance(rf.boston)
+```
+```{r}
+varImpPlot(rf.boston)
+```
+En este caso, a lo largo de todos los arboles considerados en el random forest, el nivel de la comunidad (lstat) y el tamaño de la casa (rm), son de lejos las variables más importantes.
+
+### Boosting
+
+Se hará uso del paquete **gbm**, junto a a la función **gbm()**, con el fin de ajustar boosted regression trees al set de datos **Boston**. Se usará una distribusión gaussiana, para los problemas de regresión y una distribusión bernoulli para los problemas de clasificación. El argumento **n.trees = 5000** indicará el numéro de arboles que querramos y la opción interaction.depth = 4, el limite de profundidad para cada arbol.
+
+```{r}
+library(gbm)
+set.seed(1)
+boost.boston = gbm(medv~., data = Boston[train, ], distribution = "gaussian", n.trees = 5000, interaction.depth = 4)
+```
+Se hará uso de la función **summary()** con el fin de analizar la influencia estadística relativa y se realizará un plot. De nuevo en este caso, es claro que las variables **rm** y **lstat**, son de lejos las variables más importantes.
+
+```{r echo=FALSE, message=FALSE}
+summary(boost.boston)
+```
+Se pueden generar gráficos de dependencia parcial para estas dos variables. Estos gráficos ilustrarán el efecto marginal de las variables seleccioandas sobre la respuesta después de integrar las otras variables. En este caso, como esperabamos, la mediana de los precios de las casas incrementa con **rm** y disminuye con **lstat**
+  
+  ```{r}
+par(mfrow = c(1, 2))
+plot(boost.boston, i = "rm")
+plot(boost.boston, i = "lstat")
+```
+Ahora se realizará la predicción de la variable respuesta **medv** del set de prueba mediante este boosted model.
+
+```{r}
+yhat.boost = predict(boost.boston, newdata = Boston[-train, ], n.trees = 5000)
+mean((yhat.boost - boston.test)^2)
+```
+En este caso el valor obtenido para el MSE, es similar al del random forest, pero superior para el bagging, si quisieramos mejorar el rendimiento del boosting, podríamos usar un parámetro shrinkage diferente. El valor por defecto es de 0.0001, tomemos un valor de $\lambda = 0.2$, recordemos que este valor reduce los efectos de variación de muestreo, funciona como un parámetro de penalización.
+
+```{r}
+boost.boston = gbm(medv ~., data = Boston[train, ], distribution = "gaussian", n.trees = 5000, interaction.depth = 4, shrinkage = 0.2, 
+                   verbose = F)
+yhat.boost = predict(boost.boston, newdata = Boston[-train, ], n.trees = 5000)
+mean((yhat.boost - boston.test)^2)
+
+```
+Se puede ver una reducción notable del MSE, con un $\lambda = 0.2$
+  
+## Soluciones
+  
+### Punto 10
+  
+  Para el punto número **10**, se hará uso del método boosting, para predicción de salarios, en el set de datos **Hitters**.
+
+### Tratamiento de datos
+
+Primero eliminaros las observaciones, para las que la información asociada a la variable **salary** es desconocida, y luego le aplicaremos una transformación logarítmica. 
+
+```{r}
+
+Hitters <- na.omit(Hitters) #remoción de NA's.
+Hitters$Salary <- log(Hitters$Salary) #Transformación logarítmica
+```
+
+Se generará un set de entrenamiento, con las primeras 200 observaciones y un set de prueba con las observaciones restantes.
+
+```{r}
+set.seed(0)
+
+filas <- nrow(Hitters)
+variables <- ncol(Hitters) - 1 #Se omite la variable respuesta
+
+train <- 1:200
+test <- 201:filas
+
+train_set <- Hitters[train, ]
+test_set <- Hitters[test, ]
+
+```
+
+Ahora, se generará una lista con un rango de parámetros lambda, con el fin de calcular el MSE asociado para cada lambda, tanto para los datos de entrenamiento, como de prueba. Se usará un modelo boosting, con una distribución gaussiana, debido a que la variable respuesta es de tipo numérico. 
+
+
+```{r}
+set.seed(0)
+
+lambda_set <- seq(1e-03, 0.05, by = 0.001) #Shrinkage lambdas.
+
+#Listas de NA's con la longitud del lambda_set, para almacenar el MSE de training y testing
+
+train_set_mse <- rep(NA, length(lambda_set))
+test_set_mse <- rep(NA, length(lambda_set))
+
+# Iteración y guardado de los MSE_ test y MSE_train
+
+for (i in 1:length(lambda_set)) {
+  ld <- lambda_set[i]
+  
+  boost.hitters <- gbm(Salary ~., data = train_set, distribution = "gaussian", n.trees =1000, interaction.depth = 4, shrinkage = ld)
+  
+  y_hat <- predict(boost.hitters, newdata = train_set, n.trees = 1000)
+  
+  #MSE_train
+  train_set_mse[i] <- mean((y_hat - train_set$Salary)^2)
+  
+  y_hat <- predict(boost.hitters, newdata = test_set, n.trees = 1000)
+  
+  #MSE_test
+  test_set_mse[i] <- mean((y_hat - test_set$Salary)^2)
+}
+
+#Gráfica MSE vs. Lambda
+
+plot(lambda_set, train_set_mse, type = "b", pch = 19, col = "black", xlab = "Lambda Value", ylab = "train_MSE")
+plot(lambda_set, test_set_mse, type = "b", pch = 20, col = "blue", xlab = "Lambda Value", ylab = "Test Set MSE")
+grid()
+
+```
+
+
+Se realizará un modelo de regresión lineal con este set de datos, con el fin de realizar un comparativo con el MSE del modelo boosting.
+
+```{r}
+lr <- lm(Salary ~., data = train_set)
+y_hat_tr <- predict(lr, newdata = train_set)
+y_hat_t <- predict(lr, newdata = test_set)
+MSE_train <- mean((y_hat_tr - train_set$Salary)^2)
+MSE_test <- mean((y_hat_t - test_set$Salary)^2)
+sprintf("MSE_train: %f, MSE_test: %f", MSE_train, MSE_test)
+```
+Se puede observar, que el MSE, tanto en los datos de prueba, como en los datos de entrenamiento sigue siendo menor para el modelo boosting, el cual posee un MSE_test de 0.01086731.
+
+Por último realizaremos un modelo de regresión tipo Lasso.
+
+```{r}
+lss <- model.matrix(Salary ~., data = train_set)
+lss2 <- model.matrix(Salary ~., data = test_set)
+
+cv.out <- cv.glmnet(lss, train_set$Salary, alpha = 1)
+
+bestld <- cv.out$lambda.1se
+
+y_hat_tr <- predict(cv.out, s = bestld, newx = lss)
+y_hat_t <- predict(cv.out, s = bestld,
+                   newx = lss2)
+
+MSE_train <- mean((y_hat_tr - train_set$Salary)^2)
+
+MSE_test <- mean((y_hat_t - test_set$Salary)^2)
+
+sprintf("lasso CV best value of lambda (one standard error): %f", bestld)
+
+sprintf("lasso regression MSE_train: %f", MSE_train)
+sprintf("lasso regression MSE_train: %f", MSE_test)
+```
+En este caso, nuevamente sigue teniendo un MSE más bajo el modelo boosting.
+
+Ahora vamos a plotear las variables más importantes para el modelo boosted.
+
+```{r}
+summary(boost.hitters)
+```
+Es claro que las variables más importantes son **CAtBat** y **CWalks**.
+
+### Generación Modelo bagging.
+
+```{r}
+bag.hitters <- randomForest(Salary ~., data = train_set, mtry = variables, ntree = 1000, importance  = TRUE)
+
+y_hat <- predict(bag.hitters, newdata = test_set)
+mse <- mean((test_set$Salary - y_hat)^2)
+sprintf("Bagging MSE_test: %f", MSE_test)
+```
+En este caso, el argumento **mtyr=variables**, nos indica que todos los predictores deberían ser considerados en cada una de las divisiones del arbol, en otras palabras, que deberíamos hacer uso del método **bagging**
+  
+### Punto 11
+  
+  Para la realización de este punto, se hará uso del set de datos **Caravan**
+  
+  En principio se creará un set de datos, donde las primeras 1000 observaciones serán consideradas como el set de entrenamiento y las restantes como el set de observaciones.
+
+```{r}
+set.seed(0)
+df <- read.csv("data.csv")
+#Se omiten los NA's
+df <- na.omit(df)
+
+filas <- nrow(df)
+variables <- ncol(df) - 1 #Se omite la variable respuesta
+
+train <- 1:1000
+test <- 1001:filas
+
+#Estas variables no presentan variación en el modelo, por lo que son eliminadas ("variable 50: PVRAAUT has no variation.variable 71: AVRAAUT has no variation").
+df$PVRAAUT <- NULL
+df$AVRAAUT <- NULL
+
+#La variable 'Purchase' se transformará en una variable binaria (0, 1), para hacer uso del boosting model.
+
+Purchase <- ifelse(df$Purchase == "Yes", 1, 0)
+df$Purchase <- Purchase
+train_set <- df[train, ]
+test_set <- df[test, ]
+```
+
+Para abordar este problema, se realizará un modelo tipo boosting haciendo uso del set de entrenamineto, la variable respuesta será **Purchase**, se hará uso de 1000 arboles y un valor $\lambda=0.01$. En este caso se hará uso de la distribución Bernoulli, debido a que nuestra variable respuesta es binaria.
+
+```{r}
+
+#Entrenamiento del modelo.
+
+ld <- 0.01 #Shrinkage lambda
+
+boost.caravan <- gbm(Purchase ~., data = train_set, distribution = "bernoulli", n.trees = 1000, interaction.depth = 2, shrinkage = ld)
+
+summary(boost.caravan)
+```
+Es claro que para este modelo, las variables más importantes son **PPERSAUT** y **MKOOPKLA**
+  
+  
+  ```{r}
+# Predicción del error de prueba
+
+y_hat <- predict(boost.caravan, newdata = test_set, n.trees = 1000)
+p_hat <- exp(y_hat)/(1 + exp(y_hat)) 
+# Conversión de los odd logarítmicos en probabilidades
+
+
+si_compra <- rep(0, length(test)) 
+si_compra[p_hat > 0.2]<-1
+
+# Creación de matriz de confusión.
+
+table(si_compra, test_set$Purchase)
+```
+
+Ahora vamos a generar un modelo de regresión lógistica,con el fin de generar un comparativo.
+
+```{r}
+lg <- glm(Purchase ~., data = train_set, family = "binomial")
+
+#Predicciones
+
+y_hat <- predict(lg, newdata = test_set)
+
+#Conversión de probabiliades
+
+p_hat <- exp(y_hat)/(1 + exp(y_hat))
+
+si_compra <- rep(0, length(test))
+si_compra[p_hat > 0.2] <- 1
+
+#Matriz de confusión
+
+table(si_compra, test_set$Purchase)
+```
