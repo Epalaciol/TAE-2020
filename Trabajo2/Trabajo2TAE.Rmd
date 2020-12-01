@@ -1693,3 +1693,166 @@ Ambos errores son menores a los obtenidos cuando se uso el parámetro $cost=0.01
 En general, ¿qué enfoque parece dar los mejores resultados con estos datos?
 
 El método que parece proporcionar los mejores resultados es la maquina de soporte vectorial con un kernell radial con $\gamma = 0.1$ y parámetro $cost=0.51$.
+
+
+# Apatado 9.7
+
+# Punto 4
+
+El objetivo de este punto es crear dos conjuntos de puntos(clases) no lineales para comparar el rendimiento de las máquinas de soporte vectorial con un kernel diferente.
+
+Creamos los dos conjuntos de puntos y los graficamos para ver si son no lineales.
+
+```{r}
+set.seed(69)
+x <- rnorm(100)
+y <- 4 * x^2 + 0 + rnorm(100)
+set <- sample(100, 50)
+y[set] <- y[set] + 3
+y[-set] <- y[-set] - 3
+plot(x[set], y[set], col = "red", xlab = "X", ylab = "Y", ylim = c(-5, 25))
+points(x[-set], y[-set], col = "blue")
+```
+
+Creamos los datasets de entrenamiento y de prueba.
+
+```{r}
+z <- rep(0, 100)
+z[set] <- 1
+data <- data.frame(x = x, y = y, z = as.factor(z))
+train <- sample(100, 50)
+data.train <- data[train, ]
+data.test <- data[-train, ]
+```
+
+Entrenamos la maquina de soporte vectorial con un kernel linear
+
+```{r}
+svm.linear <- svm(z ~ ., data = data.train, kernel = "linear", cost = 10)
+plot(svm.linear, data.train)
+```
+
+Miramos los errores
+
+```{r}
+table(predict = predict(svm.linear, data.train), truth = data.train$z)
+```
+
+Entrenamos la maquina de soporte vectorial con un kernel radial.
+
+```{r}
+svm.radial <- svm(z ~ ., data = data.train, kernel = "radial", gamma = 1, cost = 10)
+plot(svm.radial, data.train)
+```
+
+Miramos los errores
+
+```{r}
+table(predict = predict(svm.radial, data.train), truth = data.train$z)
+```
+
+El entrenamiento con un kernel radial tiene menos errores que el entrenamiento con kernel lineal por lo tanto tiene merjor rendimiento.
+
+# Punto 5
+
+El objetivo de este punto es aprender cómo obtener límites de decisión para para clasificación a partir de una regresión logística aplicando transformaciones no lineales
+
+## Literal a), Creacion del dataset
+
+Creamos los puntos (como nos dice el libro)
+
+```{r}
+x1 = runif (10000) -0.5
+x2 = runif (10000) -0.5
+y =1*( x1 ^2 - x2 ^2 > 0)
+```
+
+## Literal b), Graficar el dataset
+
+Graficamos el dataset con diferentes colores para cada clase
+
+```{r}
+plot(x1[y == 0], x2[y == 0], col = "red", xlab = "X1", ylab = "X2", pch = "+")
+points(x1[y == 1], x2[y == 1], col = "blue", pch = "x")
+```
+
+## Literal c), Regresión logística 
+
+Ajustamos una regresión logística al dataset
+
+```{r}
+logit.fit <- glm(y ~ x1 + x2, family = "binomial")
+summary(logit.fit)
+```
+
+## Literal d), Aplicación del modelo
+
+Aplicamos el modelo y graficamos
+
+```{r}
+data = data.frame(x1 = x1, x2 = x2, y = y)
+lm.prob = predict(logit.fit, data, type = "response")
+lm.pred = ifelse(lm.prob > 0.5, 1, 0)
+data.pos = data[lm.pred == 1, ]
+data.neg = data[lm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
+```
+
+Como se esperaba el límite de decisión es linear y no se ajusta correctamente a los datos
+
+## Literal e), Regresión logística con transformaciones no lineales
+
+Ahora ajustamos una regresión logística, pero usando funciones no lineares como “predictors”
+
+```{r}
+logitnl.fit <- glm(y ~ poly(x1, 2) + poly(x2, 2) + I(x1 * x2), data = data, family = "binomial")
+summary(logitnl.fit)
+```
+
+## Literal f), Aplicación del nuevo modelo con trasformaciones no lineales
+
+Aplicamos el nuevo modelo y graficamos
+
+```{r}
+lm.prob = predict(logitnl.fit, data, type = "response")
+lm.pred = ifelse(lm.prob > 0.5, 1, 0)
+data.pos = data[lm.pred == 1, ]
+data.neg = data[lm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
+```
+
+Ahora el límite de decisión es no linear y se ajusta mucho más a los datos 
+
+## Literal g), Ajuste de un clasificador vectorial
+
+Para este caso utilizaremos una máquina de soporte vectorial con kernel linear y graficamos los resultados
+
+```{r}
+svm.fit = svm(as.factor(y) ~ x1 + x2, data, kernel = "linear", cost = 10)
+svm.pred = predict(svm.fit, data)
+data.pos = data[svm.pred == 1, ]
+data.neg = data[svm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
+```
+
+De igual forma que con la regresión logística el límite de decisión es linear y no se ajusta correctamente a los datos
+
+## Literal h), Máquina de soporte vectorial con kernel no-linear
+
+En este caso utilizaremos un kernel radial
+
+```{r}
+svm.fit = svm(as.factor(y) ~ x1 + x2, data, kernel="radial", gamma = 1, cost=10)
+svm.pred = predict(svm.fit, data)
+data.pos = data[svm.pred == 1, ]
+data.neg = data[svm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = 4)
+```
+
+# Literal i), Resultados
+
+En este punto se nos muestra que si usamos una máquina de soporte vectorial con kernel no-linear o una regresión logística con transformaciones puede ser muy útil para encontrar límites de decisión no lineales, en cambio si se usa un kernel linear o no se usan transformaciones los resultados están muy alejados de la realidad para este tipo de problemas
