@@ -1,0 +1,307 @@
+---
+title: "Tarea 2 TAE"
+author: "Natalia Ramírez Ossa"
+date: "25/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Sección 8.4: Métodos Basados en Árboles
+
+**7.** En el laboratorio, aplicamos bosques aleatorios a los datos de Boston usando mtry = 6 y usando ntree = 25 y ntree = 500. Cree un gráfico que muestre el error de prueba resultante de bosques aleatorios en este conjunto de datos para obtener un rango más completo de valores para mtry y ntree. Puede modelar su diagrama según la Figura 8.10. Describe los resultados obtenidos.
+
+
+![](C:/Users/USUARIO/Desktop/Estudio/TAE/Captura.PNG)
+
+
+***Figura 8.10 (Libro)***
+
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+library(randomForest)
+library(MASS)
+
+set.seed(123)
+
+train <- sample(dim(Boston)[1], dim(Boston)[1]/2)
+train_1 <- Boston[train, -14]
+test_1 <- Boston[-train, -14]
+train_2 <- Boston[train, 14]
+test_2 <- Boston[-train, 14]
+
+p <- dim(Boston)[2] - 1
+p2 <- p/2
+pr <- sqrt(p)
+
+mod_p <- randomForest(train_1, train_2, xtest = test_1, ytest = test_2, 
+                          mtry = p, ntree = 500)
+mod_p2 <- randomForest(train_1, train_2, xtest = test_1, ytest = test_2, 
+                           mtry = p2, ntree = 500)
+mod_pr <- randomForest(train_1, train_2, xtest = test_1, ytest = test_2, 
+                           mtry = pr, ntree = 500)
+
+plot(1:500, mod_p$test$mse, col = "green", type = "l", xlab = "Número de árboles", 
+     ylab = "Test MSE", ylim = c(10, 19),las=1)
+lines(1:500, mod_p2$test$mse, col = "red", type = "l")
+lines(1:500, mod_pr$test$mse, col = "blue", type = "l")
+legend("topright", c("m=p", "m=p/2", "m=sqrt(p)"), col = c("green", "red", "blue"), 
+       cex = 1, lty = 1)
+```
+Graficamente podemos observar el resultado de bosques aleatorios para el conjunto de datos Boston (Valores de la vivienda en los suburbios de Boston), donde el error de prueba $(MSE)$ se reduce en la medida que se van agregando más árboles y tiende a estabilizarse alredor de 80 árboles. El valor de $m$ representa el número de predictores disponibles para dividir cada nodo del árbol y se llega a la conclusión que entre menor sea el valor de p, es decir $m<p$ se tiene un menor MSE y por lo tanto hay una mejora en el modelo.  
+
+**8.** En el laboratorio, se aplicó un árbol de clasificación al conjunto de datos de Asientos para automóvil después de convertir Ventas en una variable de respuesta cualitativa. Ahora buscaremos predecir las ventas utilizando árboles de regresión y enfoques relacionados, tratando la respuesta como una variable cuantitativa.
+
+**(a)** Divida el conjunto de datos en un conjunto de entrenamiento y un conjunto de prueba.
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+library(ISLR)
+attach(Carseats)
+train <- sample(dim(Carseats)[1], dim(Carseats)[1]/2)
+train_Carseats <- Carseats[train, ]
+test_Carseats <- Carseats[-train, ]
+```
+
+
+**(b)** Ajuste un árbol de regresión al conjunto de entrenamiento. Trace el árbol e interprete los resultados. ¿Qué tasa de error de prueba obtiene?
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+
+library(tree)
+set.seed(1234)
+tree_Carseats <- tree(Sales ~ ., data = train_Carseats)
+summary(tree_Carseats)
+```
+
+```{r, fig.align="center"}
+plot(tree_Carseats)
+text(tree_Carseats, pretty = 0)
+```
+
+```{r}
+set.seed(1234)
+pred_Carseats <- predict(tree_Carseats, test_Carseats)
+mean((test_Carseats$Sales - pred_Carseats)^2)
+```
+
+La tasa de error de pruena (MSE) es de 5.04945 
+
+**(c)** Utilice la validación cruzada para determinar el nivel óptimo de complejidad del árbol. ¿La poda del árbol mejora la tasa de error de prueba?
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+set.seed(1234)
+cv_Carseats <- cv.tree(tree_Carseats, FUN = prune.tree)
+par(mfrow = c(1, 2))
+plot(cv_Carseats$size, cv_Carseats$dev, type = "b", las=1)
+plot(cv_Carseats$k, cv_Carseats$dev, type = "b",las=1)
+```
+
+El nivel óptimo de complejidad del árbol es de 8 árboles. 
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+p_Carseats <- prune.tree(tree_Carseats, best = 8)
+par(mfrow = c(1, 1))
+plot(p_Carseats)
+text(p_Carseats, pretty = 0)
+```
+
+```{r}
+ppruned <- predict(p_Carseats, test_Carseats)
+mean((test_Carseats$Sales - ppruned)^2)
+```
+
+La tasa de error de prueba (MSE) es de 5.176175, por lo tanto incrementó el test del MSE. 
+
+
+**(d)** Utilice el método de ensacado para analizar estos datos. Qué tasa de error de prueba que obtiene? Utilice la función de importancia () para determinar qué variables son más importantes.
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+library(randomForest)
+set.seed(1234)
+embolsado_Carseats <- randomForest(Sales ~ ., data = train_Carseats, mtry = 10, ntree = 500, 
+                                   importance = T)
+embolsado_pred <- predict(embolsado_Carseats, test_Carseats)
+mean((test_Carseats$Sales - embolsado_pred)^2)
+```
+
+La tasa de error de prueba (MSE) es de 2.848948
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+importance(embolsado_Carseats)
+```
+
+El método de embolsado mejora el error de prueba (MSE), las mejores variables en orden de importancia usando la función importance() vendrían siendo Price, ShelveLoc, CompPrice, Advertising y Age.
+
+
+**(e)** Utilice bosques aleatorios para analizar estos datos. ¿Qué tasa de error de prueba obtiene? Utilice la función de importancia () para determinar qué variables son más importantes. Describa el efecto de m, el número de variables consideradas en cada división, sobre la tasa de error obtenida.
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+bosques_Carseats <- randomForest(Sales ~ ., data = train_Carseats, mtry = 8, ntree = 500, 
+                                importance = T)
+bosques_pred <- predict(bosques_Carseats, test_Carseats)
+mean((test_Carseats$Sales - bosques_pred)^2)
+```
+
+```{r}
+importance(bosques_Carseats)
+```
+El error de prueb (MSE) mejora ligeramente usando bosques aleatorios, las variables que mejor predicen las ventas siguen siendo ShelveLoc, Price, CompPrice y Advertising. El  valor de m es 8 con este se  disminuye error de prueba.  
+
+**9.** Este problema involucra al conjunto de datos de OJ que hace parte del paquete ISLR.
+
+*a)* Crear un conjunto de entrenamiento que contenga una muestra aleatoria de 800 observaciones, y un conjunto de pruebas que contiene las observaciones restantes.
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+attach(OJ)
+train <- sample(dim(OJ)[1], 800)
+OJtrain <- OJ[train, ]
+OJtest <- OJ[-train, ]
+```
+
+*b)* Ajustar un árbol a los datos de entrenamiento, con la respuesta "Purchase". y las otras variables como predictores. Utilice la función summary() para producir estadísticas resumidas sobre el árbol, y describir la resultados obtenidos. ¿Cuál es la tasa de error de entrenamiento? ¿Cuántos nodos terminales que tiene el árbol?  
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+set.seed(1234)
+OJtree <- tree(Purchase ~ ., data = OJtrain)
+summary(OJtree)
+```
+
+Las estadística resumidas obtenidas por la función summary se tiene que el árbol usa 3 variables predictoras, entre ellas tenemos LoyalCH, PriceDiff, ListPriceDiff. El árbol tiene 8 nodos terminales y su tasa de error es de 0.16
+
+*c)* Escriba el nombre del objeto de árbol para obtener una salida de texto detallada. Elija uno de los nodos terminales e interprete la información que se muestra.
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+OJtree
+```
+
+Se escogió el nodo terminal "12)". La variable dividida en este nodo es PriceDiff, el valor de division en este nodo es de 0.015 y hay 93 puntos en el subarbol debajo de este nodo. La desviación para todos los puntos contenidos en la región por debajo de este nodo es de 126.8. La predicción de este nodo es Sales=MM. Alrededor de 42.02% puntos en este nodo tienen a CH como valor de Sales, el otro 57.97% restante tienen a MM como valor de Sales.  
+
+*d)* Crear un gráfico del árbol e interpretar los resultados.  
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+plot(OJtree)
+text(OJtree, pretty = 0)
+```
+
+La variable mas importantes del árbol es LoyalCH, estando en los primeros tres nodos del árbol. Si la variable LoyalCH es menor que 0.27 el arbol predice MM, si LoyalCH es mayor a 0.76 el árbol predice CH.  
+
+*e)* Predecir la respuesta en los datos de la prueba, y producir una confusión matriz que compara las etiquetas de las pruebas con las etiquetas de las pruebas previstas. ¿Cuál es la tasa de error de la prueba? 
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+set.seed(1234)
+OJpred <- predict(OJtree, OJtest, type = "class")
+table(OJtest$Purchase, OJpred)
+```
+
+La tasa de error de prueba es de 17.04%. 
+
+*f)* Aplicar la función cv.tree() al conjunto de entrenamiento para determinar el tamaño óptimo del árbol.  
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+OJcv = cv.tree(OJtree, FUN = prune.tree)
+```
+
+
+*g)* Elaborar un gráfico con el tamaño del árbol en el eje x y validarlo de forma cruzada tasa de error de clasificación en el eje Y.  
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+plot(OJcv$size, OJcv$dev, type = "b", xlab = "Tamaño del árbol", ylab = "Desviación",las=1)
+```
+
+*h)* ¿Qué tamaño de árbol corresponde a la clasificación validada cruzada más baja tasa de error?
+
+Un tamaño de 5 arrojaría la menor tasa de error de validación cruzada.  
+
+*i)* Producir un árbol podado que corresponda al tamaño óptimo del árbol obtenido mediante validación cruzada. Si la validación cruzada no conduce a la selección de un árbol podado, luego crear un árbol podado con cinco nodos terminales.  
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+set.seed(1234)
+p_OJ <- prune.tree(OJtree, best = 6)
+p_OJ
+```
+
+*j)* Comparar las tasas de error de entrenamiento entre los podados y los no podados árboles. ¿Cuál es más alto?
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+summary(p_OJ)
+```
+
+La tasa de error del árbol podado es levemente mas alto que el del árbol original.  
+
+*k)* Comparar los índices de error de la prueba entre los podados y los no podados árboles. ¿Cuál es más alto?  
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+set.seed(1234)
+p_NOpruned <- predict(OJtree, OJtest, type = "class")
+badNopruned <- sum(OJtest$Purchase != p_NOpruned)
+badNopruned/length(p_NOpruned)
+```
+
+```{r}
+set.seed(1234)
+p_pruned <- predict(p_OJ, OJtest, type = "class")
+badpruned = sum(OJtest$Purchase != p_pruned)
+badpruned/length(p_pruned)
+```
+
+Para los índices de error de la prueba entre los árboles podados y los áboles no podados es de 0
+17037, no presentan diferencias.
+
+**12.** Aplicar el potenciamiento, el embolsamiento y los bosques aleatorios a un conjunto de datos de su elección. Asegúrate de que los modelos encajen en datos de entrenamiento y de que evalúen su rendimiento en datos de prueba. ¿Cómo de precisos son los resultados comparados a métodos simples como la regresión lineal o logística? ¿Cuál de estos que los enfoques de la investigación dan el mejor resultado?
+
+Por comodidad se usará la base de datos Caravan.
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+train <- 1:1000
+library(tidyverse)
+Caravan <- Caravan%>%
+  mutate(Purchase=case_when(Purchase == "Yes" ~ 1, TRUE~0))
+Ctrain <- Caravan[train, ]
+Ctest <- Caravan[-train, ]
+```
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+#Usando regresión logistica
+logist <- glm(Purchase ~ ., data = Ctrain, family = binomial)
+logistp <- predict(logist, Ctest, type = "response")
+prediccion <- ifelse(logistp > 0.2, 1, 0)
+table(Ctest$Purchase, prediccion)
+```
+
+El error de prueba es de 12.04%  
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+#Usando potenciamiento
+set.seed(1234)
+library(gbm)
+cpotencido <- gbm(Purchase ~ ., data = Ctrain, n.trees = 1000, shrinkage = 0.01, 
+    distribution = "bernoulli")
+potenciado <- predict(cpotencido, Ctest, n.trees = 1000, type = "response")
+potenciadop <- ifelse(potenciado > 0.2, 1, 0) #mayor a 20%
+table(Ctest$Purchase, potenciadop)
+```
+Test de error es de 7.98%
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+#Usando embolsamiento
+set.seed(1234)
+cembolsado <- randomForest(Purchase ~ ., data = Ctrain, mtry = 6)
+cpredembolsado <- predict(cembolsado, newdata = Ctest)
+embolsadop <- ifelse(cpredembolsado > 0.2, 1, 0) #mayor a 20%
+table(embolsadop, Ctest$Purchase)
+```
+Test de error es de 9.78%
+
+```{r, echa=FALSE, warning=FALSE, fig.align="center"}
+#Usando bosques aleatorios
+set.seed(1234)
+cbosques <- randomForest(Purchase ~ ., data = Ctrain, mtry = 2)
+cbosquesp <- predict(cbosques, newdata = Ctest)
+bp <- ifelse(cbosquesp > 0.2, 1, 0) #mayor a 20%
+table(bp, Ctest$Purchase)
+```
+Test de error es de 7.38%
+
+El test de error mas bajo fue el de bosques aleatorios.  
