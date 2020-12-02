@@ -21,6 +21,8 @@ knitr::opts_chunk$set(
 )
 ```
 
+El presente trabajo muestra el desarrollo de algunos de los ejercicios prácticos propuestos en el libro "An Introduction to Statistical Learning with Applications in R".
+
 ```{r}
 library(ggplot2)
 library(pROC)
@@ -28,12 +30,19 @@ library(e1071)
 library(ISLR)
 library(ggplot2)
 library(MLmetrics)
+library(tree)
 library(MASS)
 library(class)
+library(randomForest)
+library(tidyverse)
+library(glmnet)
+library(gbm)
 ```
 
 # Apartado 4.7
+
 # Punto 10
+
 ## Introducción
 
 En el siguiente estudio, se presentan resultados analíticos del set de datos Weekly del paquete ISLR, este set de datos contiene los datos del porcentaje de retorno del índice S&P 500 a lo largo de las semanas en 20 años, desde 1990 hasta 2010. 
@@ -120,7 +129,7 @@ print(sprintf("El porcentaje de aciertos es de %f%s", Accuracy(predicted,real)*1
 c_matrix
 ```
 
-## Literal d), Regresión logística #2
+## Literal d), Regresión logística 2
 
 Se realiza otra regresión logística, teniendo en cuenta esta vez solamente la variable Lag2, y usando los datos de entrenamiento desde el 1990 hasta el 2008.
 ```{r}
@@ -823,7 +832,702 @@ table(predict, y_vl)
 
 El modelo que presentó la mejor métrica de porcentaje de aciertos fue KNN con $k=4$, con un $96\%$. Las otras aproximaciones como el LDA, GLM, QDA  presentan un rendimiento más bajo, yendo desde $83\%$ hasta $89\%$. Realizando el análisis de predictores con la regresión logística, se definió que todas las variables aportaban un poco de significancia a la predicción, presentando el mejor rendimiento al usar todas las variables en el modelo.
 
+# Apartado 8.4
+
+# Punto 7
+
+En el laboratorio, aplicamos bosques aleatorios a los datos de Boston usando $mtry = 6$ y usando $ntree = 25$ y $ntree = 500$. Cree un gráfico que muestre el error de prueba resultante de bosques aleatorios en este conjunto de datos para obtener un rango más completo de valores para $mtry$ y $ntree$. Puede modelar su diagrama según la Figura 8.10. Describe los resultados obtenidos.
+
+```{r echo=FALSE, fig.align='center', fig.cap="Figura 8.10 (Libro)"}
+knitr::include_graphics("Figura810.jpg")
+```
+
+
+```{r echo=FALSE}
+set.seed(123)
+
+train <- sample(dim(Boston)[1], dim(Boston)[1]/2)
+train_1 <- Boston[train, -14]
+test_1 <- Boston[-train, -14]
+train_2 <- Boston[train, 14]
+test_2 <- Boston[-train, 14]
+
+p <- dim(Boston)[2] - 1
+p2 <- p/2
+pr <- sqrt(p)
+
+mod_p <- randomForest(train_1, train_2, xtest = test_1, ytest = test_2, 
+                          mtry = p, ntree = 500)
+mod_p2 <- randomForest(train_1, train_2, xtest = test_1, ytest = test_2, 
+                           mtry = p2, ntree = 500)
+mod_pr <- randomForest(train_1, train_2, xtest = test_1, ytest = test_2, 
+                           mtry = pr, ntree = 500)
+
+plot(1:500, mod_p$test$mse, col = "green", type = "l", xlab = "Número de árboles", 
+     ylab = "Test MSE", ylim = c(10, 19),las=1)
+lines(1:500, mod_p2$test$mse, col = "red", type = "l")
+lines(1:500, mod_pr$test$mse, col = "blue", type = "l")
+legend("topright", c("m=p", "m=p/2", "m=sqrt(p)"), col = c("green", "red", "blue"), 
+       cex = 1, lty = 1)
+```
+
+Graficamente se puede observar el resultado de bosques aleatorios para el conjunto de datos Boston (Valores de la vivienda en los suburbios de Boston), donde el error de prueba $(MSE)$ se reduce en la medida que se van agregando más árboles y tiende a estabilizarse alredor de $80$ árboles. El valor de $m$ representa el número de predictores disponibles para dividir cada nodo del árbol y se llega a la conclusión que entre menor sea el valor de p, es decir $m<p$ se tiene un menor $MSE$ y por lo tanto hay una mejora en el modelo. 
+
+# Punto 8 
+
+En el laboratorio, se aplicó un árbol de clasificación al conjunto de datos de Asientos para automóvil después de convertir Ventas en una variable de respuesta cualitativa. Ahora buscaremos predecir las ventas utilizando árboles de regresión y enfoques relacionados, tratando la respuesta como una variable cuantitativa.
+
+## Literal a), División del conjunto 
+
+Divida el conjunto de datos en un conjunto de entrenamiento y un conjunto de prueba.
+
+```{r}
+set.seed(123456)
+train <- sample(dim(Carseats)[1], dim(Carseats)[1]/2)
+train_Carseats <- Carseats[train, ]
+test_Carseats <- Carseats[-train, ]
+```
+
+## Literal b), Ajuste de un árbol de regresión 
+
+Ajuste un árbol de regresión al conjunto de entrenamiento. Trace el árbol e interprete los resultados. ¿Qué tasa de error de prueba obtiene?
+
+```{r echo=FALSE}
+tree_Carseats <- tree(Sales ~ ., data = train_Carseats)
+summary(tree_Carseats)
+```
+
+Del resumen del árbol de regresión ajustado se observa que de las 10 covariables solo $8$ han sido utilizadas en la construcción del árbol, este árbol proporcioda una suma de cuadrados de los errores de $184$.
+
+```{r echo=FALSE}
+plot(tree_Carseats)
+text(tree_Carseats, pretty = 0)
+```
+
+El árbol de regresión contiene $15$ nodos intermedios y $16$ nodos terminales, se observa que el nivel Good del factor ShelveLoc no es de importancia y para la división solo se tienen en cuenta los niveles Bad y Medium, cuando este factor esta en Bad se encuentra otro nodo interno, si Price es menor a $123.5$ se despliegan otros dos nodos intermedios, el de la izquierda relacionado con la variable Age y el de la derecha con CompPrice; si ShelveLoc es Medium se encuentra un nodo interno relacionado con la variable Price, si esta es menor a $109.5$ se despliegan dos nodos intermedios que involucrans la variable CompPrice  y US, cuando esta última es No la predicción para Sales es $7.499$. La predicción para Sales cuando ShelveLoc es Bad, Price es menor a $105.5$, Age es menor a $50$, Price es menor a $80.5$ es $9.55$, de manera similar se interpretan las otras predicciones para la variable respuesta Sales.
+
+```{r}
+set.seed(1234)
+pred_Carseats <- predict(tree_Carseats, test_Carseats)
+paste("El error de prueba es:", mean((test_Carseats$Sales - pred_Carseats)^2))
+```
+
+# Literar c), Determinar el nivel óptimo del árbol
+
+Utilice la validación cruzada para determinar el nivel óptimo de complejidad del árbol. ¿La poda del árbol mejora la tasa de error de prueba?
+
+```{r}
+set.seed(1234)
+cv_Carseats <- cv.tree(tree_Carseats, FUN = prune.tree)
+```
+```{r echo=FALSE}
+par(mfrow = c(1, 2))
+plot(cv_Carseats$size, cv_Carseats$dev, type = "b", las=1)
+plot(cv_Carseats$k, cv_Carseats$dev, type = "b",las=1)
+```
+
+El nivel óptimo de complejidad del árbol es de $8$ nodos terminales, a continuación, se presenta el ajuste del árbol de regresión con $8$ nodos terminales.
+
+```{r}
+p_Carseats <- prune.tree(tree_Carseats, best = 8)
+```
+
+```{r echo=FALSE}
+par(mfrow = c(1, 1))
+plot(p_Carseats)
+text(p_Carseats, pretty = 0)
+```
+
+
+```{r}
+ppruned <- predict(p_Carseats, test_Carseats)
+paste("El error de prueba es:", mean((test_Carseats$Sales - ppruned)^2))
+```
+
+esta tsa es menor a la obtenida con el árbol sin podar, es decir que la poda del árbol mejoro el ajuste. 
+
+## Literal c), Importancia de variables
+
+Utilice el método de $bagging$ para analizar estos datos. Qué tasa de error de prueba que obtiene? Utilice la función de $importance()$ para determinar qué variables son más importantes.
+
+```{r}
+set.seed(1234)
+embolsado_Carseats <- randomForest(Sales ~ ., data = train_Carseats, 
+                                   mtry = 10, ntree = 500, importance = T)
+embolsado_pred <- predict(embolsado_Carseats, test_Carseats)
+paste("El error de prueba es:", 
+      mean((test_Carseats$Sales - embolsado_pred)^2))
+```
+esta tasa de error es mucho menor que el obtenido en los literales anteriores.
+
+```{r}
+importance(embolsado_Carseats)
+```
+
+Se observa que cuando la Variable ShelveLoc es retirada del modelo el $MSE$ se incrementa en un $60.27\%$ y cuando se retira Price dicho $MSE$ aumenta en $48.12\%$.
+
+```{r echo=FALSE}
+varImpPlot(embolsado_Carseats)
+```
+
+Los resultados indican que en todos los árboles considerados en el bosque aleatorio, el precio que cobra la empresa por los asientos de seguridad en cada sitio (Price) y el que indica la calidad de la ubicación de las estanterías para los asientos del automóvil en cada sitio (ShelveLoc) son las dos variables más importantes.
+
+## Literal e), Usar bosques aleatorios
+
+Utilice bosques aleatorios para analizar estos datos. ¿Qué tasa de error de prueba obtiene? Utilice la función de $importance()$ para determinar qué variables son más importantes. Describa el efecto de $m$, el número de variables consideradas en cada división, sobre la tasa de error obtenida.
+
+Para el ajuste se usa $m=8$ ya que es el valor que disminuye el error de prueba.
+
+```{r}
+bosques_Carseats <- randomForest(Sales ~ ., data = train_Carseats, 
+                                 mtry = 8, ntree = 500, importance = T)
+bosques_pred <- predict(bosques_Carseats, test_Carseats)
+paste("El error de prueba es:", 
+      mean((test_Carseats$Sales - bosques_pred)^2))
+```
+un poco mayor a la obtenida cuando se usa el método de $bagging$.
+
+```{r}
+importance(bosques_Carseats)
+```
+```{r echo=FALSE}
+varImpPlot(bosques_Carseats)
+```
+
+Se observa que cuando la Variable ShelveLoc es retirada del modelo el $MSE$ se incrementa en un $57.76\%$ y cuando se retira Price dicho $MSE$ aumenta en $47.20\%$.
+
+# Punto 9 
+
+Este problema involucra al conjunto de datos de OJ que hace parte del paquete ISLR.
+
+## Literal a) División del conjunto de datos
+
+Crear un conjunto de entrenamiento que contenga una muestra aleatoria de $800$ observaciones, y un conjunto de pruebas que contiene las observaciones restantes.
+
+```{r}
+set.seed(1234)
+train <- sample(dim(OJ)[1], 800)
+OJtrain <- OJ[train, ]
+OJtest <- OJ[-train, ]
+```
+
+## Literal b), Ajustar un árbol
+
+Ajustar un árbol a los datos de entrenamiento, con la respuesta "Purchase". y las otras variables como predictores. Utilice la función $summary()$ para producir estadísticas resumidas sobre el árbol, y describir la resultados obtenidos. ¿Cuál es la tasa de error de entrenamiento? ¿Cuántos nodos terminales que tiene el árbol?  
+
+```{r}
+set.seed(1234)
+OJtree <- tree(Purchase ~ ., data = OJtrain)
+summary(OJtree)
+```
+
+Las estadísticas resumidas obtenidas por la función $summary$ se tiene que el árbol usa $2$ variables predictoras, las cuales son LoyalCH y PriceDiff. El árbol tiene $7$ nodos terminales y su tasa de error es de $0.165$.
+
+## Literal c)
+
+Escriba el nombre del objeto de árbol para obtener una salida de texto detallada. Elija uno de los nodos terminales e interprete la información que se muestra.
+
+```{r echo=FALSE, fig.align='center'}
+knitr::include_graphics("textoarbol.JPG")
+```
+
+
+Se escogió el nodo terminal "3)". La variable dividida en este nodo es LoyalCH, el valor de division en este nodo es de $0.48285$ y hay $498$ puntos en el subarbol debajo de este nodo. La desviación para todos los puntos contenidos en la región por debajo de este nodo es de $442.3$. La predicción de este nodo es $Sales=CH$. Alrededor de $83.735\%$ puntos en este nodo tienen a CH como valor de Sales, el otro $16.265\%$ restante tienen a MM como valor de Sales.
+
+## Literal d)
+
+Crear un gráfico del árbol e interpretar los resultados.  
+
+```{r echo=FALSE}
+plot(OJtree)
+text(OJtree, pretty = 0)
+```
+
+La variable mas importantes del árbol es LoyalCH, estando en los primeros tres nodos del árbol. Si la variable LoyalCH es menor que $0.26$ el árbol predice MM, si LoyalCH es mayor a $0.76$ el árbol predice CH.  
+
+## Literal e)
+
+Predecir la respuesta en los datos de la prueba, y producir una matriz de confusión que compara las etiquetas de prueba con las etiquetas de prueba predichas. ¿Cuál es la tasa de error de la prueba? 
+
+```{r}
+set.seed(1234)
+OJpred <- predict(OJtree, OJtest, type = "class")
+table(OJtest$Purchase, OJpred)
+```
+
+La tasa de error de prueba es de $21.11%$.
+
+## Literal f)
+
+Aplicar la función $cv.tree()$ al conjunto de entrenamiento para determinar el tamaño óptimo del árbol.  
+
+```{r}
+OJcv = cv.tree(OJtree, FUN = prune.tree)
+```
+
+
+## Literal g) 
+
+Elaborar un gráfico con el tamaño del árbol en el eje x y validarlo de forma cruzada con la tasa de error de clasificación en el eje Y.  
+
+```{r}
+plot(OJcv$size, OJcv$dev, type = "b", xlab = "Tamaño del árbol", ylab = "Desviación",las=1)
+```
+
+## Literal h)
+
+¿Qué tamaño de árbol corresponde a la clasificación validada cruzada más baja tasa de error?
+
+Un árbol con $5$ nodos terminales arrojaría la menor tasa de error de validación cruzada. 
+
+## Literal i)
+
+Producir un árbol podado que corresponda al tamaño óptimo del árbol obtenido mediante validación cruzada. Si la validación cruzada no conduce a la selección de un árbol podado, luego crear un árbol podado con cinco nodos terminales.  
+
+```{r}
+set.seed(1234)
+p_OJ <- prune.tree(OJtree, best = 5)
+summary(p_OJ)
+```
+Las estadística resumidas obtenidas por la función $summary$ se tiene que el árbol usa $2$ variables predictoras, las cuales son LoyalCH y PriceDiff El árbol tiene $5$ nodos terminales y su tasa de error es de $0.1825$.
+
+## Literal j) 
+
+Comparar las tasas de error de entrenamiento entre los podados y los no podados árboles. ¿Cuál es más alto?
+
+Al hacer el ajuste de los árboles se obtiene que la tasa de error de entrenamiento para el árbol sin podar es  $14.75%$ y para el árbol podado es $18.25$ que es levemente mayor, por lo tanto la poda del árbol no mejor significativamente el error.
+
+## Literal k) 
+
+Comparar los índices de error de la prueba entre los podados y los no podados árboles. ¿Cuál es más alto?  
+
+```{r echo=FALSE}
+set.seed(1234)
+p_NOpruned <- predict(OJtree, OJtest, type = "class")
+badNopruned <- sum(OJtest$Purchase != p_NOpruned)
+paste("El MSE de prueba para el árbol no podado es", round((badNopruned/length(p_NOpruned))*100, 3))
+```
+
+```{r echo=FALSE}
+set.seed(1234)
+p_pruned <- predict(p_OJ, OJtest, type = "class")
+badpruned = sum(OJtest$Purchase != p_pruned)
+paste("El MSE de prueba para el árbol podado es", round((badpruned/length(p_pruned))*100, 3))
+```
+En cuanto a error de prueba es mejor usar el árbol podado para realizar las predicciones.
+
+# Punto 10
+  
+Para el punto número **10**, se hará uso del método boosting, para predicción de salarios, en el set de datos **Hitters**.
+
+### Tratamiento de datos
+
+Primero se eliminan las observaciones, para las que la información asociada a la variable **salary** es desconocida, y luego se aplica una transformación logarítmica. 
+
+```{r}
+Hitters <- na.omit(Hitters) #remoción de NA's.
+Hitters$Salary <- log(Hitters$Salary) #Transformación logarítmica
+```
+
+Se generará un set de entrenamiento, con las primeras $200$ observaciones y un set de prueba con las observaciones restantes.
+
+```{r}
+set.seed(0)
+filas <- nrow(Hitters)
+variables <- ncol(Hitters) - 1 #Se omite la variable respuesta
+
+train <- 1:200
+test <- 201:filas
+
+train_set <- Hitters[train, ]
+test_set <- Hitters[test, ]
+
+```
+
+Ahora, se generará una lista con un rango de parámetros lambda, con el fin de calcular el $MSE$ asociado para cada lambda, tanto para los datos de entrenamiento, como de prueba. Se usará un modelo $boosting$, con una distribución gaussiana, debido a que la variable respuesta es de tipo numérico. 
+
+```{r}
+set.seed(0)
+
+lambda_set <- seq(1e-03, 0.05, by = 0.001) #Shrinkage lambdas.
+
+#Listas de NA's con la longitud del lambda_set, para almacenar el MSE de training y testing
+
+train_set_mse <- rep(NA, length(lambda_set))
+test_set_mse <- rep(NA, length(lambda_set))
+
+# Iteración y guardado de los MSE_ test y MSE_train
+
+for (i in 1:length(lambda_set)) {
+  ld <- lambda_set[i]
+  
+  boost.hitters <- gbm(Salary ~., data = train_set, distribution = "gaussian", n.trees =1000, interaction.depth = 4, shrinkage = ld)
+  
+  y_hat <- predict(boost.hitters, newdata = train_set, n.trees = 1000)
+  
+  #MSE_train
+  train_set_mse[i] <- mean((y_hat - train_set$Salary)^2)
+  
+  y_hat <- predict(boost.hitters, newdata = test_set, n.trees = 1000)
+  
+  #MSE_test
+  test_set_mse[i] <- mean((y_hat - test_set$Salary)^2)
+}
+
+#Gráfica MSE vs. Lambda
+
+plot(lambda_set, train_set_mse, type = "b", pch = 19, col = "black", xlab = "Lambda Value", ylab = "train_MSE")
+plot(lambda_set, test_set_mse, type = "b", pch = 20, col = "blue", xlab = "Lambda Value", ylab = "Test Set MSE")
+grid()
+
+```
+
+Se realizará un modelo de regresión lineal con este set de datos, con el fin de realizar un comparativo con el $MSE$ del modelo $boosting$.
+
+```{r}
+lr <- lm(Salary ~., data = train_set)
+y_hat_tr <- predict(lr, newdata = train_set)
+y_hat_t <- predict(lr, newdata = test_set)
+MSE_train <- mean((y_hat_tr - train_set$Salary)^2)
+MSE_test <- mean((y_hat_t - test_set$Salary)^2)
+sprintf("MSE_train: %f, MSE_test: %f", MSE_train, MSE_test)
+```
+Se puede observar, que el $MSE$, tanto en los datos de prueba, como en los datos de entrenamiento sigue siendo menor para el modelo $boosting$, el cual posee un $MSE_test$ de $0.01086731$.
+
+Por último se realiza un modelo de regresión tipo Lasso.
+
+```{r}
+lss <- model.matrix(Salary ~., data = train_set)
+lss2 <- model.matrix(Salary ~., data = test_set)
+
+cv.out <- cv.glmnet(lss, train_set$Salary, alpha = 1)
+
+bestld <- cv.out$lambda.1se
+
+y_hat_tr <- predict(cv.out, s = bestld, newx = lss)
+y_hat_t <- predict(cv.out, s = bestld,
+                   newx = lss2)
+
+MSE_train <- mean((y_hat_tr - train_set$Salary)^2)
+
+MSE_test <- mean((y_hat_t - test_set$Salary)^2)
+
+sprintf("lasso CV best value of lambda (one standard error): %f", bestld)
+
+sprintf("lasso regression MSE_train: %f", MSE_train)
+sprintf("lasso regression MSE_train: %f", MSE_test)
+```
+En este caso, nuevamente sigue teniendo un $MSE$ más bajo el modelo $boosting$.
+
+Ahora se identifican las variables más importantes para el modelo $boosted$.
+
+```{r}
+summary(boost.hitters)
+```
+Es claro que las variables más importantes son **CAtBat** y **CWalks**.
+
+### Generación Modelo bagging.
+
+```{r}
+bag.hitters <- randomForest(Salary ~., data = train_set, mtry = variables, ntree = 1000, importance  = TRUE)
+
+y_hat <- predict(bag.hitters, newdata = test_set)
+mse <- mean((test_set$Salary - y_hat)^2)
+sprintf("Bagging MSE_test: %f", MSE_test)
+```
+En este caso, el argumento $mtyr=variables$, nos indica que todos los predictores deberían ser considerados en cada una de las divisiones del arbol, en otras palabras, que se debe hacer uso del método $bagging$.
+  
+# Punto 11
+  
+Para la realización de este punto, se hace uso del set de datos **Caravan**
+  
+En principio se creará un set de datos, donde las primeras $1000$ observaciones serán consideradas como el set de entrenamiento y las restantes como el set de prueba.
+
+```{r}
+set.seed(0)
+df <- read.csv("data.csv")
+#Se omiten los NA's
+df <- na.omit(df)
+
+filas <- nrow(df)
+variables <- ncol(df) - 1 #Se omite la variable respuesta
+
+train <- 1:1000
+test <- 1001:filas
+
+#Estas variables no presentan variación en el modelo, por lo que son eliminadas ("variable 50: PVRAAUT has no variation.variable 71: AVRAAUT has no variation").
+df$PVRAAUT <- NULL
+df$AVRAAUT <- NULL
+
+#La variable 'Purchase' se transformará en una variable binaria (0, 1), para hacer uso del boosting model.
+
+Purchase <- ifelse(df$Purchase == "Yes", 1, 0)
+df$Purchase <- Purchase
+train_set <- df[train, ]
+test_set <- df[test, ]
+```
+
+Para abordar este problema, se realiza un modelo tipo $boosting$ haciendo uso del set de entrenamineto, la variable respuesta será $Purchase$, se hará uso de $1000$ árboles y un valor $\lambda=0.01$. En este caso se hará uso de la distribución Bernoulli, debido a que la variable respuesta es binaria.
+
+```{r}
+#Entrenamiento del modelo.
+ld <- 0.01 #Shrinkage lambda
+boost.caravan <- gbm(Purchase ~., data = train_set, distribution = "bernoulli", n.trees = 1000, interaction.depth = 2, shrinkage = ld)
+summary(boost.caravan)
+```
+Es claro que para este modelo, las variables más importantes son **PPERSAUT** y **MKOOPKLA**.
+
+```{r}
+# Predicción del error de prueba
+y_hat <- predict(boost.caravan, newdata = test_set, n.trees = 1000)
+p_hat <- exp(y_hat)/(1 + exp(y_hat)) 
+# Conversión de los odd logarítmicos en probabilidades
+si_compra <- rep(0, length(test)) 
+si_compra[p_hat > 0.2]<-1
+# Creación de matriz de confusión.
+table(si_compra, test_set$Purchase)
+```
+
+Ahora se genera un modelo de regresión lógistica, con el fin de generar un comparativo.
+
+```{r}
+lg <- glm(Purchase ~., data = train_set, family = "binomial")
+
+#Predicciones
+y_hat <- predict(lg, newdata = test_set)
+
+#Conversión de probabiliades
+p_hat <- exp(y_hat)/(1 + exp(y_hat))
+si_compra <- rep(0, length(test))
+si_compra[p_hat > 0.2] <- 1
+
+#Matriz de confusión
+table(si_compra, test_set$Purchase)
+```
+
+El modelo de regresión lógistica presenta una mayor cantidad de observaciones mal clasificadas.
+
+# Punto 12 
+Aplicar el potenciamiento, el embolsamiento y los bosques aleatorios a un conjunto de datos de su elección. Asegúrate de que los modelos encajen en datos de entrenamiento y de que evalúen su rendimiento en datos de prueba. ¿Cómo de precisos son los resultados comparados a métodos simples como la regresión lineal o logística? ¿Cuál de estos que los enfoques de la investigación dan el mejor resultado?
+
+Por comodidad se usará la base de datos Caravan.
+
+```{r}
+train <- 1:1000
+library(tidyverse)
+Caravan <- Caravan%>%
+  mutate(Purchase=case_when(Purchase == "Yes" ~ 1, TRUE~0))
+Ctrain <- Caravan[train, ]
+Ctest <- Caravan[-train, ]
+```
+
+```{r}
+#Usando regresión logistica
+logist <- glm(Purchase ~ ., data = Ctrain, family = binomial)
+logistp <- predict(logist, Ctest, type = "response")
+prediccion <- ifelse(logistp > 0.2, 1, 0)
+table(Ctest$Purchase, prediccion)
+```
+
+El error de prueba es de $12.04\%$.  
+
+```{r}
+#Usando potenciamiento
+set.seed(1234)
+library(gbm)
+cpotencido <- gbm(Purchase ~ ., data = Ctrain, n.trees = 1000, 
+                  shrinkage = 0.01, 
+    distribution = "bernoulli")
+potenciado <- predict(cpotencido, Ctest, n.trees = 1000, type = "response")
+potenciadop <- ifelse(potenciado > 0.2, 1, 0) #mayor a 20%
+table(Ctest$Purchase, potenciadop)
+```
+Test de error es de $7.98\%$.
+
+```{r}
+#Usando embolsamiento
+set.seed(1234)
+cembolsado <- randomForest(Purchase ~ ., data = Ctrain, mtry = 6)
+cpredembolsado <- predict(cembolsado, newdata = Ctest)
+embolsadop <- ifelse(cpredembolsado > 0.2, 1, 0) #mayor a 20%
+table(embolsadop, Ctest$Purchase)
+```
+Test de error es de $9.78\%$.
+
+```{r}
+#Usando bosques aleatorios
+set.seed(1234)
+cbosques <- randomForest(Purchase ~ ., data = Ctrain, mtry = 2)
+cbosquesp <- predict(cbosques, newdata = Ctest)
+bp <- ifelse(cbosquesp > 0.2, 1, 0) #mayor a 20%
+table(bp, Ctest$Purchase)
+```
+Test de error es de $7.38\%$
+
+El error de test más bajo fue el de bosques aleatorios.  
+
 # Apartado 9.7
+
+# Punto 4
+
+El objetivo de este punto es crear dos conjuntos de puntos (clases) no lineales para comparar el rendimiento de las máquinas de soporte vectorial con un kernel diferente.
+
+Se crean dos conjuntos de puntos y se grafican para identificar si son no lineales.
+
+```{r}
+set.seed(69)
+x <- rnorm(100)
+y <- 4 * x^2 + 0 + rnorm(100)
+set <- sample(100, 50)
+y[set] <- y[set] + 3
+y[-set] <- y[-set] - 3
+plot(x[set], y[set], col = "red", xlab = "X", ylab = "Y", ylim = c(-5, 25))
+points(x[-set], y[-set], col = "blue")
+```
+
+Se crean los datasets de entrenamiento y de prueba.
+
+```{r}
+z <- rep(0, 100)
+z[set] <- 1
+data <- data.frame(x = x, y = y, z = as.factor(z))
+train <- sample(100, 50)
+data.train <- data[train, ]
+data.test <- data[-train, ]
+```
+
+Entrenamos la maquina de soporte vectorial con un kernel linear
+
+```{r}
+svm.linear <- svm(z ~ ., data = data.train, kernel = "linear", cost = 10)
+plot(svm.linear, data.train)
+```
+
+Se visualizan los errores
+
+```{r}
+table(predict = predict(svm.linear, data.train), truth = data.train$z)
+```
+
+Se entrena a la máquina de soporte vectorial con un kernel radial.
+
+```{r}
+svm.radial <- svm(z ~ ., data = data.train, kernel = "radial", gamma = 1, cost = 10)
+plot(svm.radial, data.train)
+```
+
+Se visualizan los errores
+
+```{r}
+table(predict = predict(svm.radial, data.train), truth = data.train$z)
+```
+El entrenamiento con un kernel radial tiene menos errores que el entrenamiento con kernel lineal por lo tanto tiene mejor rendimiento.
+
+# Punto 5
+
+El objetivo de este punto es aprender cómo obtener límites de decisión para clasificación a partir de una regresión logística aplicando transformaciones no lineales
+
+## Literal a), Creacion del dataset
+
+Se crean los puntos (como nos indica el libro)
+
+```{r}
+x1 = runif (10000) -0.5
+x2 = runif (10000) -0.5
+y =1*( x1 ^2 - x2 ^2 > 0)
+```
+
+## Literal b), Graficar el dataset
+
+Se realiza el gráfico del dataset creado anteriormente usando diferentes colores para cada clase.
+
+```{r}
+plot(x1[y == 0], x2[y == 0], col = "red", xlab = "X1", ylab = "X2", pch = "+")
+points(x1[y == 1], x2[y == 1], col = "blue", pch = "x")
+```
+
+## Literal c), Regresión logística 
+
+Se realiza el ajuste de una regresión logística al dataset.
+
+```{r}
+logit.fit <- glm(y ~ x1 + x2, family = "binomial")
+summary(logit.fit)
+```
+Las variables $X1$ y $X2$ no son siginificativas para el modelo ajustado.
+
+## Literal d), Aplicación del modelo
+
+Se aplica el modelo y se realiza un gráfico con el fin de visualizar de una manera mas clara.
+
+```{r}
+data = data.frame(x1 = x1, x2 = x2, y = y)
+lm.prob = predict(logit.fit, data, type = "response")
+lm.pred = ifelse(lm.prob > 0.5, 1, 0)
+data.pos = data[lm.pred == 1, ]
+data.neg = data[lm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
+```
+
+Como se esperaba el límite de decisión es lineal y no se ajusta correctamente a los datos.
+
+## Literal e), Regresión logística con transformaciones no lineales
+
+Ahora se ajusta una regresión logística, pero usando funciones no lineales como “predictors”.
+
+```{r}
+logitnl.fit <- glm(y ~ poly(x1, 2) + poly(x2, 2) + I(x1 * x2), data = data, family = "binomial")
+summary(logitnl.fit)
+```
+Ninguna de las fuunciones no lineales usadas logro agregar significancia al modelo.
+
+## Literal f), Aplicación del nuevo modelo con trasformaciones no lineales
+
+Se aplica el nuevo modelo y se realiza un gráfico con el fin de visualizar de una manera mas clara.
+
+```{r}
+lm.prob = predict(logitnl.fit, data, type = "response")
+lm.pred = ifelse(lm.prob > 0.5, 1, 0)
+data.pos = data[lm.pred == 1, ]
+data.neg = data[lm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
+```
+
+Ahora el límite de decisión es no lineal y se ajusta mejor a los datos 
+
+## Literal g), Ajuste de un clasificador vectorial
+
+Para este caso se utilizará una máquina de soporte vectorial con kernel linear y se grafican los resultados.
+
+```{r}
+svm.fit = svm(as.factor(y) ~ x1 + x2, data, kernel = "linear", cost = 10)
+svm.pred = predict(svm.fit, data)
+data.pos = data[svm.pred == 1, ]
+data.neg = data[svm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
+```
+
+De igual forma que con la regresión logística el límite de decisión es lineal y no se ajusta correctamente a los datos.
+
+## Literal h), Máquina de soporte vectorial con kernel no-linear
+
+Se ajusta un máquina de soporte vectorial con kernel radial.
+
+```{r}
+svm.fit = svm(as.factor(y) ~ x1 + x2, data, kernel="radial", gamma = 1, cost=10)
+svm.pred = predict(svm.fit, data)
+data.pos = data[svm.pred == 1, ]
+data.neg = data[svm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
+points(data.neg$x1, data.neg$x2, col = "red", pch = 4)
+```
+
+## Literal i), Resultados
+
+En este punto se identifica que si se usa una máquina de soporte vectorial con kernel no-lineal o una regresión logística con transformaciones puede ser muy útil para encontrar límites de decisión no lineales, en cambio si se usa un kernel lineal o no se usan transformaciones los resultados están muy alejados de la realidad para este tipo de problemas.
 
 # Punto 6 
 
@@ -1694,165 +2398,6 @@ En general, ¿qué enfoque parece dar los mejores resultados con estos datos?
 
 El método que parece proporcionar los mejores resultados es la maquina de soporte vectorial con un kernell radial con $\gamma = 0.1$ y parámetro $cost=0.51$.
 
+Finalmente se adjunta el enlace para acceder al [ensayo](https://github.com/Epalaciol/TAE-2020/blob/main/Trabajo2/Ensayo%20T%C3%A9cnicas%20de%20Aprendizaje%20Estad%C3%ADstico.pdf), este fue elaborado sobre el tema de inseguridad en Medellín.
 
-# Apatado 9.7
-
-# Punto 4
-
-El objetivo de este punto es crear dos conjuntos de puntos(clases) no lineales para comparar el rendimiento de las máquinas de soporte vectorial con un kernel diferente.
-
-Creamos los dos conjuntos de puntos y los graficamos para ver si son no lineales.
-
-```{r}
-set.seed(69)
-x <- rnorm(100)
-y <- 4 * x^2 + 0 + rnorm(100)
-set <- sample(100, 50)
-y[set] <- y[set] + 3
-y[-set] <- y[-set] - 3
-plot(x[set], y[set], col = "red", xlab = "X", ylab = "Y", ylim = c(-5, 25))
-points(x[-set], y[-set], col = "blue")
-```
-
-Creamos los datasets de entrenamiento y de prueba.
-
-```{r}
-z <- rep(0, 100)
-z[set] <- 1
-data <- data.frame(x = x, y = y, z = as.factor(z))
-train <- sample(100, 50)
-data.train <- data[train, ]
-data.test <- data[-train, ]
-```
-
-Entrenamos la maquina de soporte vectorial con un kernel linear
-
-```{r}
-svm.linear <- svm(z ~ ., data = data.train, kernel = "linear", cost = 10)
-plot(svm.linear, data.train)
-```
-
-Miramos los errores
-
-```{r}
-table(predict = predict(svm.linear, data.train), truth = data.train$z)
-```
-
-Entrenamos la maquina de soporte vectorial con un kernel radial.
-
-```{r}
-svm.radial <- svm(z ~ ., data = data.train, kernel = "radial", gamma = 1, cost = 10)
-plot(svm.radial, data.train)
-```
-
-Miramos los errores
-
-```{r}
-table(predict = predict(svm.radial, data.train), truth = data.train$z)
-```
-
-El entrenamiento con un kernel radial tiene menos errores que el entrenamiento con kernel lineal por lo tanto tiene merjor rendimiento.
-
-# Punto 5
-
-El objetivo de este punto es aprender cómo obtener límites de decisión para para clasificación a partir de una regresión logística aplicando transformaciones no lineales
-
-## Literal a), Creacion del dataset
-
-Creamos los puntos (como nos dice el libro)
-
-```{r}
-x1 = runif (10000) -0.5
-x2 = runif (10000) -0.5
-y =1*( x1 ^2 - x2 ^2 > 0)
-```
-
-## Literal b), Graficar el dataset
-
-Graficamos el dataset con diferentes colores para cada clase
-
-```{r}
-plot(x1[y == 0], x2[y == 0], col = "red", xlab = "X1", ylab = "X2", pch = "+")
-points(x1[y == 1], x2[y == 1], col = "blue", pch = "x")
-```
-
-## Literal c), Regresión logística 
-
-Ajustamos una regresión logística al dataset
-
-```{r}
-logit.fit <- glm(y ~ x1 + x2, family = "binomial")
-summary(logit.fit)
-```
-
-## Literal d), Aplicación del modelo
-
-Aplicamos el modelo y graficamos
-
-```{r}
-data = data.frame(x1 = x1, x2 = x2, y = y)
-lm.prob = predict(logit.fit, data, type = "response")
-lm.pred = ifelse(lm.prob > 0.5, 1, 0)
-data.pos = data[lm.pred == 1, ]
-data.neg = data[lm.pred == 0, ]
-plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
-points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
-```
-
-Como se esperaba el límite de decisión es linear y no se ajusta correctamente a los datos
-
-## Literal e), Regresión logística con transformaciones no lineales
-
-Ahora ajustamos una regresión logística, pero usando funciones no lineares como “predictors”
-
-```{r}
-logitnl.fit <- glm(y ~ poly(x1, 2) + poly(x2, 2) + I(x1 * x2), data = data, family = "binomial")
-summary(logitnl.fit)
-```
-
-## Literal f), Aplicación del nuevo modelo con trasformaciones no lineales
-
-Aplicamos el nuevo modelo y graficamos
-
-```{r}
-lm.prob = predict(logitnl.fit, data, type = "response")
-lm.pred = ifelse(lm.prob > 0.5, 1, 0)
-data.pos = data[lm.pred == 1, ]
-data.neg = data[lm.pred == 0, ]
-plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
-points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
-```
-
-Ahora el límite de decisión es no linear y se ajusta mucho más a los datos 
-
-## Literal g), Ajuste de un clasificador vectorial
-
-Para este caso utilizaremos una máquina de soporte vectorial con kernel linear y graficamos los resultados
-
-```{r}
-svm.fit = svm(as.factor(y) ~ x1 + x2, data, kernel = "linear", cost = 10)
-svm.pred = predict(svm.fit, data)
-data.pos = data[svm.pred == 1, ]
-data.neg = data[svm.pred == 0, ]
-plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
-points(data.neg$x1, data.neg$x2, col = "red", pch = "x")
-```
-
-De igual forma que con la regresión logística el límite de decisión es linear y no se ajusta correctamente a los datos
-
-## Literal h), Máquina de soporte vectorial con kernel no-linear
-
-En este caso utilizaremos un kernel radial
-
-```{r}
-svm.fit = svm(as.factor(y) ~ x1 + x2, data, kernel="radial", gamma = 1, cost=10)
-svm.pred = predict(svm.fit, data)
-data.pos = data[svm.pred == 1, ]
-data.neg = data[svm.pred == 0, ]
-plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+",xlim = c(-0.5, 0.5), ylim = c(-0.5, 0.5))
-points(data.neg$x1, data.neg$x2, col = "red", pch = 4)
-```
-
-# Literal i), Resultados
-
-En este punto se nos muestra que si usamos una máquina de soporte vectorial con kernel no-linear o una regresión logística con transformaciones puede ser muy útil para encontrar límites de decisión no lineales, en cambio si se usa un kernel linear o no se usan transformaciones los resultados están muy alejados de la realidad para este tipo de problemas
+[Repositorio Git Hub](https://github.com/Epalaciol/TAE-2020)
