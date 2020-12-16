@@ -1,4 +1,4 @@
- Análisis y predicción de la accidentalidad en Medellín (2014-2018)
+ # Análisis y predicción de la accidentalidad en Medellín (2014-2018)
 
 La alta accidentalidad en Medellín se está convirtiendo en un problema de salud pública (Concejo de Medellín, 2020), los accidentes de tránsito aparecen como la séptima causa de muerte en el planeta y más aún, ha sido considerada como la segunda causa que más genera muertes en Colombia (Sistemas y Comunicaciones FODC, s.f.). Esta “epidemia” es la primera causa de muerte de las personas menores de 40 años a escala mundial. (ARL SURA, 2020)
 
