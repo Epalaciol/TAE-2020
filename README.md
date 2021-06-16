@@ -8,3 +8,4 @@ Gracias a los datos abiertos presentados por la Alcaldía de Medellín, se puede
 
 **RPubs:** [Informe](https://rpubs.com/caacostara/693371)
 
+**Video:** [Video demostrativo](https://youtu.be/LLs7qh-ILCA)
